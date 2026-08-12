@@ -1310,17 +1310,21 @@ body.monitor-mode .nav button[data-action="monitor"]{
 }
 .worldmap-figure svg{display:block;width:100%;height:auto}
 .worldmap-sea{fill:#e7eef2}
-.worldmap-land{fill:#dfe7d7;stroke:#cdd8c2;stroke-width:1}
-.worldmap-grat{stroke:#d3dee2;stroke-width:1;stroke-dasharray:3 5}
-.worldmap-bubble{stroke:#ffffff;stroke-width:2;cursor:pointer;transition:opacity .12s ease}
-.worldmap-bubble:hover{opacity:.85}
+.worldmap-context{fill:#e4eade;stroke:#d2dbca;stroke-width:.8}
+.worldmap-country{stroke:#2b3327;stroke-width:.9;cursor:pointer;transition:opacity .12s ease}
+.worldmap-country:hover{opacity:.82;stroke-width:1.6}
 .worldmap-code{
   font:800 12px "Arial Narrow","Roboto Condensed",Arial,sans-serif;
-  fill:#12200f;text-anchor:middle;dominant-baseline:middle;pointer-events:none
+  fill:#12200f;text-anchor:middle;dominant-baseline:middle;pointer-events:none;
+  paint-order:stroke;stroke:#ffffff;stroke-width:2.6px;stroke-linejoin:round
 }
 .worldmap-blabel{
-  font:700 10px "Segoe UI",Arial,sans-serif;fill:#3c4a37;text-anchor:middle;pointer-events:none
+  font:700 10px "Segoe UI",Arial,sans-serif;fill:#20301b;text-anchor:middle;pointer-events:none;
+  paint-order:stroke;stroke:#ffffff;stroke-width:2.2px;stroke-linejoin:round
 }
+.worldmap-scale{display:flex;align-items:center;gap:8px}
+.worldmap-scale-bar{display:inline-block;width:160px;height:12px;border:1px solid #cdd8c2;border-radius:2px}
+.worldmap-scale-min,.worldmap-scale-max{font-size:10px;color:var(--moss);font-variant-numeric:tabular-nums}
 .worldmap-legend{
   display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;
   padding:11px 14px;border-top:1px solid #dbe3d5;background:#f5f8f2;color:var(--muted);font-size:11px
@@ -2001,6 +2005,7 @@ body.monitor-mode .nav button[data-action="monitor"]{
 <div class="week-scroll-hint" id="weekScrollHint" aria-live="polite"></div>
 <div class="tooltip" id="tooltip"></div>
 
+<script src="dashboard-geo.js"></script>
 <script src="dashboard-sales.js"></script>
 <script src="dashboard-country.js"></script>
 <script src="dashboard-sawline.js"></script>

@@ -3563,58 +3563,50 @@ function renderWorldMap(){
     detailKpi("Ø-Preis (gewichtet)",avgPrice,"price",label)
   ].join("");
 
-  const maxVal=Math.max(...ranked.map(valueOf),1);
-  const proj0=worldMapProject(0,50);
-  const land=[
-    {lon:6.5,lat:49.6,rxd:8.2,ryd:6.6},
-    {lon:-4,lat:40,rxd:5.2,ryd:4.2},
-    {lon:-1.9,lat:53.6,rxd:2.7,ryd:3.7},
-    {lon:-8,lat:53.3,rxd:1.7,ryd:1.9},
-    {lon:13,lat:43.6,rxd:2,ryd:4.7}
-  ];
-  const landSvg=land.map(l=>{
-    const p=worldMapProject(l.lon,l.lat);
-    return `<ellipse class="worldmap-land" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" rx="${(l.rxd*p.sx).toFixed(1)}" ry="${(l.ryd*p.sy).toFixed(1)}"/>`;
-  }).join("");
-  let gratSvg="";
-  for(const lon of [-10,-5,0,5,10,15]){const a=worldMapProject(lon,35),b=worldMapProject(lon,59);gratSvg+=`<line class="worldmap-grat" x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}"/>`;}
-  for(const lat of [40,45,50,55]){const a=worldMapProject(-11,lat),b=worldMapProject(19,lat);gratSvg+=`<line class="worldmap-grat" x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}"/>`;}
-
+  const positives=ranked.map(valueOf);
+  const maxVal=Math.max(...positives,1);
+  const minVal=positives.length?Math.min(...positives):0;
+  const colorFor=value=>{
+    if(value===null||value===undefined||!Number.isFinite(value)||value<=0)return "#dbe1d4";
+    const ratio=maxVal===minVal?1:(value-minVal)/(maxVal-minVal);
+    return worldMapColor(Math.max(.08,Math.min(1,ratio)));
+  };
   Object.keys(worldMapTipByLand).forEach(key=>delete worldMapTipByLand[key]);
-  const bubbles=[...rows].sort((a,b)=>(valueOf(b)||0)-(valueOf(a)||0)).map(row=>{
-    const value=valueOf(row);
-    const p=worldMapProject(row.lon,row.lat);
+  rows.forEach(row=>{
     worldMapTipByLand[row.land]=`<b>${esc(row.land)}</b> · ${esc(label)}<br>`+
       `Umsatz: ${format(row.rev,"currency")}<br>`+
       `Menge: ${format(row.vol,"m3")}<br>`+
       `Ø-Preis: ${format(row.price,"price")}<br>`+
       `Mengenanteil: ${format(row.share,"pctpoint")}`;
-    if(value===null||value<=0){
-      return `<g><circle class="worldmap-bubble" data-land="${esc(row.land)}" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="6" fill="#c7d2be" opacity=".7"/>`+
-        `<text class="worldmap-code" x="${p.x.toFixed(1)}" y="${p.y.toFixed(1)}">${row.code}</text></g>`;
-    }
-    const ratio=Math.min(1,value/maxVal);
-    const r=8+Math.sqrt(value/maxVal)*34;
-    return `<g><circle class="worldmap-bubble" data-land="${esc(row.land)}" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${r.toFixed(1)}" fill="${worldMapColor(ratio)}"/>`+
-      `<text class="worldmap-code" x="${p.x.toFixed(1)}" y="${p.y.toFixed(1)}">${row.code}</text>`+
-      `<text class="worldmap-blabel" x="${p.x.toFixed(1)}" y="${(p.y+r+11).toFixed(1)}">${worldMapShort(value,metric)}</text></g>`;
+  });
+  const rowByLand=Object.fromEntries(rows.map(row=>[row.land,row]));
+  const contextSvg=(typeof GEO_CONTEXT!=="undefined"?GEO_CONTEXT:[]).map(d=>`<path class="worldmap-context" d="${d}"/>`).join("");
+  const markets=typeof GEO_MARKETS!=="undefined"?GEO_MARKETS:{};
+  const countrySvg=Object.entries(markets).map(([name,geo])=>{
+    const row=rowByLand[name],value=row?valueOf(row):null;
+    return `<path class="worldmap-country" data-land="${esc(name)}" d="${geo.path}" fill="${colorFor(value)}"/>`;
   }).join("");
-
-  worldMapSvg.innerHTML=`<svg viewBox="0 0 760 560" role="img" aria-label="Karte der Absatzmärkte">
-    <rect class="worldmap-sea" x="0" y="0" width="760" height="560"/>
-    ${landSvg}${gratSvg}${bubbles}
+  const labelSvg=Object.entries(markets).map(([name,geo])=>{
+    const row=rowByLand[name],value=row?valueOf(row):null;
+    return `<text class="worldmap-code" x="${geo.cx}" y="${geo.cy-4}">${row?row.code:geo.iso}</text>`+
+      `<text class="worldmap-blabel" x="${geo.cx}" y="${geo.cy+9}">${worldMapShort(value,metric)}</text>`;
+  }).join("");
+  const VW=typeof GEO_VIEW!=="undefined"?GEO_VIEW.w:760,VH=typeof GEO_VIEW!=="undefined"?GEO_VIEW.h:560;
+  worldMapSvg.innerHTML=`<svg viewBox="0 0 ${VW} ${VH}" role="img" aria-label="Karte der Absatzmärkte">
+    <rect class="worldmap-sea" x="0" y="0" width="${VW}" height="${VH}"/>
+    ${contextSvg}${countrySvg}${labelSvg}
   </svg>`;
-  worldMapSvg.querySelectorAll(".worldmap-bubble").forEach(el=>{
+  worldMapSvg.querySelectorAll(".worldmap-country").forEach(el=>{
     el.addEventListener("mousemove",e=>showTip(e,worldMapTipByLand[el.dataset.land]||el.dataset.land));
     el.addEventListener("mouseleave",hideTip);
   });
 
-  const legendSizes=[1,.5,.2].map(fraction=>{
-    const value=maxVal*fraction;const r=8+Math.sqrt(fraction)*34;
-    return `<div class="worldmap-legend-size"><i style="width:${(r*2).toFixed(0)}px;height:${(r*2).toFixed(0)}px"></i><span>${worldMapShort(value,metric)}</span></div>`;
-  }).join("");
-  worldMapLegend.innerHTML=`<div><strong style="color:var(--forest)">${cfg.label}</strong> je Land · Blasengröße ∝ Wert</div>
-    <div class="worldmap-legend-sizes">${legendSizes}</div>`;
+  worldMapLegend.innerHTML=`<div><strong style="color:var(--forest)">${cfg.label}</strong> je Land · dunkleres Grün = höherer Wert · Werte per Mauszeiger</div>
+    <div class="worldmap-scale">
+      <span class="worldmap-scale-min">${worldMapShort(minVal,metric)}</span>
+      <span class="worldmap-scale-bar" style="background:linear-gradient(90deg,${worldMapColor(.1)},${worldMapColor(.5)},${worldMapColor(1)})"></span>
+      <span class="worldmap-scale-max">${worldMapShort(maxVal,metric)}</span>
+    </div>`;
 
   worldMapRankTitle.textContent=`Rangliste · ${cfg.label}`;
   worldMapRankSub.textContent=label;
