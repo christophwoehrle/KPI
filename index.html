@@ -1362,6 +1362,10 @@ body.monitor-mode .nav button[data-action="monitor"]{
 }
 
 
+/* Reiterleiste umbrechen, damit kein Tab (z. B. Weltkarte) verdeckt wird */
+.nav{flex-wrap:wrap;overflow-x:visible;row-gap:2px}
+@media(max-width:780px){.nav{flex-wrap:nowrap;overflow-x:auto}}
+
 /* Länderdaten-Punktauswahl */
 .cp-points{display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 12px}
 .cp-point{
