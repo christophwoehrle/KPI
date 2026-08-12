@@ -1361,6 +1361,36 @@ body.monitor-mode .nav button[data-action="monitor"]{
   .worldmap-controls{width:100%}
 }
 
+
+/* Länderdaten-Punktauswahl */
+.cp-points{display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 12px}
+.cp-point{
+  display:inline-flex;align-items:center;gap:8px;border:1px solid #c5d0be;background:white;
+  color:var(--forest);padding:8px 12px;border-radius:2px;cursor:pointer;font-size:11px;
+  font-weight:800;text-transform:uppercase;letter-spacing:.04em;user-select:none
+}
+.cp-point:hover{border-color:var(--streit-green)}
+.cp-point .cp-box{
+  position:relative;width:14px;height:14px;flex:0 0 auto;border:1px solid #9fb08c;
+  border-radius:2px;background:#fff
+}
+.cp-point.active{background:var(--forest);border-color:var(--forest);color:#fff}
+.cp-point.active .cp-box{background:var(--streit-green);border-color:var(--streit-green)}
+.cp-point.active .cp-box:after{
+  content:"";position:absolute;left:4px;top:1px;width:4px;height:8px;
+  border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)
+}
+.cp-point .cp-unit{font-weight:700;color:inherit;opacity:.7;text-transform:none;letter-spacing:0}
+.cp-info{
+  display:flex;align-items:center;gap:11px;flex-wrap:wrap;margin-bottom:14px;
+  color:var(--muted);font-size:12px
+}
+.cp-table{min-width:760px}
+.cp-table th:not(:first-child){text-align:right;white-space:nowrap}
+.cp-table td:first-child{font-weight:800;color:var(--forest);position:sticky;left:0;background:inherit}
+.cp-table td:not(:first-child){text-align:right;font-variant-numeric:tabular-nums;font-weight:700}
+.cp-empty{padding:22px 10px;text-align:center;color:var(--muted);border:2px dashed #bcc9b5;background:#f3f6f0}
+
 </style>
 </head>
 <body>
@@ -1403,7 +1433,8 @@ body.monitor-mode .nav button[data-action="monitor"]{
       </div>
     </div>
     <nav class="nav" id="nav">
-      <button class="active" data-view="sales">Umsatz</button>
+      <button class="active" data-view="countryPoints">Länderdaten</button>
+      <button data-view="sales">Umsatz</button>
       <button data-view="production">Produktion</button>
       <button data-view="sawline"><span class="saw-nav-icon" aria-hidden="true"></span>Sägelinie</button>
       <button data-view="overview">Übersicht</button>
@@ -1517,7 +1548,43 @@ body.monitor-mode .nav button[data-action="monitor"]{
 </dialog>
 
 <main>
-  <section class="view active" id="sales">
+  <section class="view active" id="countryPoints">
+    <div class="section-head">
+      <div>
+        <h2>Länderdaten – Punktauswahl</h2>
+        <p>Datenpunkte auswählen, die für mehrere Länder vorliegen, und über alle Absatzmärkte vergleichen – je Kalenderwoche oder als Jahressumme.</p>
+      </div>
+      <div class="worldmap-controls">
+        <div class="worldmap-mode" id="cpMode" role="group" aria-label="Zeitbezug">
+          <button type="button" data-mode="week" class="active">Anzeige-KW</button>
+          <button type="button" data-mode="sum">Jahressumme</button>
+        </div>
+        <div class="control local-control">
+          <label>Kalenderwoche</label>
+          <select class="local-week-select" id="cpWeek"></select>
+        </div>
+      </div>
+    </div>
+
+    <div class="cp-points" id="cpPoints" role="group" aria-label="Datenpunkte auswählen"></div>
+    <div class="cp-info" id="cpInfo"></div>
+
+    <div class="card">
+      <div class="card-title-row">
+        <div><h3>Ländervergleich des ausgewählten Punkts</h3><div class="card-sub" id="cpChartSub"></div></div>
+        <select class="local-week-select wide-select" id="cpChartPoint"></select>
+      </div>
+      <div class="chart" id="cpChart"></div>
+    </div>
+
+    <div class="card">
+      <h3>Datenpunkte im Detail</h3>
+      <div class="card-sub" id="cpTableSub">Zeilen: Länder · Spalten: ausgewählte Datenpunkte. Farbintensität je Spalte nach Wert.</div>
+      <div class="table-wrap"><table class="cp-table" id="cpTable"></table></div>
+    </div>
+  </section>
+
+  <section class="view" id="sales">
     <div class="section-head">
       <div>
         <h2>Umsatz</h2>

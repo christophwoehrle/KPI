@@ -594,6 +594,7 @@ function rebuildWeekSelectors(selectLatest=true){
   sync(productionWeek,selectLatest?Math.max(...weeks):Number(productionWeek.value));
   sync(countryCompareWeek,selectLatest?Math.max(...weeks):Number(countryCompareWeek.value));
   if(typeof worldMapWeek!=="undefined")sync(worldMapWeek,selectLatest?Math.max(...weeks):Number(worldMapWeek.value));
+  if(typeof cpWeek!=="undefined")sync(cpWeek,selectLatest?Math.max(...weeks):Number(cpWeek.value));
   sync(statisticsBuilderWeek,selectLatest?Math.max(...weeks):Number(statisticsBuilderWeek.value));
   refreshBuilderWeekOptions(selectLatest?Math.max(...availableAllKpiWeeks()):Number(builderWeek.value));
   refreshStatisticsAfterDataChange();
@@ -773,8 +774,8 @@ async function importExcelFiles(fileList,options={}){
 }
 
 
-const TAB_ORDER_STORAGE_KEY="kwDashboardTabOrderV1";
-const DEFAULT_TAB_ORDER=["sales","production","sawline","overview","trends","annual","statistics","quality","land","countryCompare","worldmap","details","builder"];
+const TAB_ORDER_STORAGE_KEY="kwDashboardTabOrderV2";
+const DEFAULT_TAB_ORDER=["countryPoints","sales","production","sawline","overview","trends","annual","statistics","quality","land","countryCompare","worldmap","details","builder"];
 let draggedTabButton=null;
 let suppressNextTabClick=false;
 let touchTabTimer=null;
@@ -1512,6 +1513,7 @@ function initControls(){
     event.preventDefault();document.body.classList.remove("file-drag");
     importExcelFiles(event.dataTransfer?.files,{expectedKind:"auto",source:"Drag-and-drop"});
   });
+  initCountryPoints();
   initWorldMap();
   initKpiBuilder(availableAllKpiWeeks());
   setGlobalDisplayWeek(Math.max(...weeks),{showHint:false});
@@ -1598,7 +1600,7 @@ function synchronizeAllDashboardWindows(week){
 
   for(let index=0;index<8;index++)kpiWeekSelection[index]=targetWeek;
 
-  [ytdWeek,refinementWeek,salesWeek,productionWeek,countryCompareWeek,sawlineWeek,statisticsBuilderWeek,builderWeek,typeof worldMapWeek!=="undefined"?worldMapWeek:null].forEach(select=>{
+  [ytdWeek,refinementWeek,salesWeek,productionWeek,countryCompareWeek,sawlineWeek,statisticsBuilderWeek,builderWeek,typeof worldMapWeek!=="undefined"?worldMapWeek:null,typeof cpWeek!=="undefined"?cpWeek:null].forEach(select=>{
     if(select&&Array.from(select.options).some(option=>Number(option.value)===targetWeek)){
       select.value=String(targetWeek);
     }
@@ -3640,6 +3642,155 @@ function initWorldMap(){
   }));
 }
 
+const COUNTRY_POINTS=[
+  {id:"M%",label:"Mengenanteil",unit:"M%",type:"pctpoint",kind:"field",field:"M%"},
+  {id:"vol",label:"Menge (hergeleitet)",unit:"m³",type:"m3",kind:"vol"},
+  {id:"rev",label:"Umsatz (hergeleitet)",unit:"€",type:"currency",kind:"rev"},
+  {id:"Ø-Preis Gesamt",label:"Ø-Preis Gesamt",unit:"€/m³",type:"price",kind:"field",field:"Ø-Preis Gesamt"},
+  {id:"Ø-Preis HW-Säge",label:"Ø-Preis HW-Säge",unit:"€/m³",type:"price",kind:"field",field:"Ø-Preis HW-Säge"},
+  {id:"swprice",label:"Ø-Preis SW (abgeleitet)",unit:"€/m³",type:"price",kind:"swprice"},
+  {id:"M% HW-Säge",label:"Anteil HW-Säge",unit:"M%",type:"pctpoint",kind:"field",field:"M% HW-Säge"},
+  {id:"M% SW",label:"Anteil Seitenware",unit:"M%",type:"pctpoint",kind:"field",field:"M% SW"}
+];
+const CP_STORAGE_KEY="kwDashboardCountryPointsV1";
+let cpMode="week";
+let cpSelected=new Set(["M%","vol","rev","Ø-Preis Gesamt"]);
+let cpChartPointId="rev";
+function cpSaveState(){storageSet(CP_STORAGE_KEY,JSON.stringify({mode:cpMode,points:[...cpSelected],chart:cpChartPointId}))}
+function cpLoadState(){
+  try{
+    const s=JSON.parse(storageGet(CP_STORAGE_KEY)||"null");
+    if(s){
+      if(s.mode==="week"||s.mode==="sum")cpMode=s.mode;
+      if(Array.isArray(s.points)&&s.points.length)cpSelected=new Set(s.points.filter(id=>COUNTRY_POINTS.some(p=>p.id===id)));
+      if(s.chart&&COUNTRY_POINTS.some(p=>p.id===s.chart))cpChartPointId=s.chart;
+    }
+  }catch(error){}
+}
+function cpPointById(id){return COUNTRY_POINTS.find(p=>p.id===id)}
+function cpValue(rec,point){
+  if(!point)return null;
+  if(point.kind==="vol")return rec.vol;
+  if(point.kind==="rev")return rec.rev;
+  if(point.kind==="swprice")return rec.swprice;
+  return rec[point.field];
+}
+function countryPointsRecords(){
+  const names=[...new Set((DATA.countryComparison||[]).map(r=>r.Land))];
+  if(cpMode==="week"){
+    const week=Number(cpWeek.value)||Math.max(...availableDashboardWeeks());
+    const weekly=DATA.weekly.find(r=>r["KW Nr."]===week);
+    const total=n(weekly?.["Umsatzmenge gesamt (m³)"]);
+    const wprice=n(weekly?.["Ø Preis gesamt (€/m³)"]);
+    const recs=names.map(name=>{
+      const row=(DATA.countryComparison||[]).find(r=>r["KW Nr."]===week&&r.Land===name)||{Land:name};
+      const mp=n(row["M%"]);
+      const vol=(total!==null&&mp!==null)?total*mp/100:null;
+      const price=n(row["Ø-Preis Gesamt"])??wprice??null;
+      const rev=(vol!==null&&price!==null)?vol*price:null;
+      return {land:name,"M%":mp,"Ø-Preis Gesamt":n(row["Ø-Preis Gesamt"]),"Ø-Preis HW-Säge":n(row["Ø-Preis HW-Säge"]),
+        "M% HW-Säge":n(row["M% HW-Säge"]),"M% SW":n(row["M% SW"]),vol,rev,swprice:derivedSwPrice(row)};
+    });
+    return {recs,label:`KW${String(week).padStart(2,"0")}`};
+  }
+  const weeks=availableDashboardWeeks();
+  const recs=names.map(name=>{
+    let volSum=0,revSum=0,count=0,hwPw=0,hwPwt=0,hwShW=0,hwShWt=0,swShW=0,swShWt=0;
+    weeks.forEach(week=>{
+      const weekly=DATA.weekly.find(r=>r["KW Nr."]===week);
+      const total=n(weekly?.["Umsatzmenge gesamt (m³)"]);
+      const wprice=n(weekly?.["Ø Preis gesamt (€/m³)"]);
+      const row=(DATA.countryComparison||[]).find(r=>r["KW Nr."]===week&&r.Land===name);
+      const mp=n(row?.["M%"]);
+      if(total===null||mp===null)return;
+      const vol=total*mp/100;volSum+=vol;count++;
+      const price=n(row?.["Ø-Preis Gesamt"])??wprice??null;if(price!==null)revSum+=vol*price;
+      const hwp=n(row?.["Ø-Preis HW-Säge"]);if(hwp!==null){hwPw+=vol*hwp;hwPwt+=vol;}
+      const hwS=n(row?.["M% HW-Säge"]);if(hwS!==null){hwShW+=vol*hwS;hwShWt+=vol;}
+      const swS=n(row?.["M% SW"]);if(swS!==null){swShW+=vol*swS;swShWt+=vol;}
+    });
+    const price=volSum?revSum/volSum:null;
+    const hwPrice=hwPwt?hwPw/hwPwt:null;
+    const hwShare=hwShWt?hwShW/hwShWt:null;
+    const swShare=swShWt?swShW/swShWt:null;
+    return {land:name,vol:count?volSum:null,rev:count?revSum:null,"Ø-Preis Gesamt":price,"Ø-Preis HW-Säge":hwPrice,
+      "M% HW-Säge":hwShare,"M% SW":swShare,swprice:derivedSwPrice({"Ø-Preis Gesamt":price,"Ø-Preis HW-Säge":hwPrice,"M% HW-Säge":hwShare,"M% SW":swShare}),"M%":null,_count:count};
+  });
+  const totalVol=recs.reduce((sum,r)=>sum+(r.vol||0),0);
+  recs.forEach(r=>r["M%"]=totalVol?(r.vol||0)/totalVol*100:null);
+  return {recs,label:`Jahressumme · ${weeks.length} KW`};
+}
+function renderCountryPointChips(){
+  cpPoints.innerHTML=COUNTRY_POINTS.map(point=>`<button type="button" class="cp-point${cpSelected.has(point.id)?" active":""}" data-point="${esc(point.id)}" aria-pressed="${cpSelected.has(point.id)}">
+    <span class="cp-box" aria-hidden="true"></span>${esc(point.label)} <span class="cp-unit">${esc(point.unit)}</span>
+  </button>`).join("");
+  cpPoints.querySelectorAll(".cp-point").forEach(btn=>btn.addEventListener("click",()=>{
+    const id=btn.dataset.point;
+    if(cpSelected.has(id)){if(cpSelected.size>1)cpSelected.delete(id);}else cpSelected.add(id);
+    cpSaveState();renderCountryPoints();
+  }));
+}
+function renderCountryPoints(){
+  if(!document.getElementById("cpPoints"))return;
+  cpWeek.disabled=cpMode!=="week";
+  document.querySelectorAll('#cpMode button').forEach(btn=>btn.classList.toggle("active",btn.dataset.mode===cpMode));
+  renderCountryPointChips();
+
+  const selectedPoints=COUNTRY_POINTS.filter(p=>cpSelected.has(p.id));
+  const {recs,label}=countryPointsRecords();
+  const rows=recs.filter(rec=>selectedPoints.some(p=>cpValue(rec,p)!==null&&cpValue(rec,p)!==undefined));
+  cpInfo.innerHTML=`<span class="chip">${esc(label)}</span>
+    <span>${rows.length} Länder mit Daten</span>
+    <span>${selectedPoints.length} von ${COUNTRY_POINTS.length} Datenpunkten gewählt</span>`;
+
+  const chartOptions=selectedPoints.length?selectedPoints:[COUNTRY_POINTS[0]];
+  if(!chartOptions.some(p=>p.id===cpChartPointId))cpChartPointId=chartOptions[0].id;
+  cpChartPoint.innerHTML=chartOptions.map(p=>`<option value="${esc(p.id)}" ${p.id===cpChartPointId?"selected":""}>${esc(p.label)}</option>`).join("");
+  const chartPoint=cpPointById(cpChartPointId)||chartOptions[0];
+  cpChartSub.textContent=`${label} · ${chartPoint.label} (${chartPoint.unit}) je Land`;
+  const chartRows=rows.map(rec=>({label:rec.land,value:cpValue(rec,chartPoint)}))
+    .filter(item=>item.value!==null&&item.value!==undefined&&Number.isFinite(item.value))
+    .sort((a,b)=>b.value-a.value);
+  barChart("cpChart",chartRows.map((item,index)=>({
+    label:item.label,value:item.value,color:colors[index%colors.length],
+    formatted:format(item.value,chartPoint.type)
+  })),{tick:value=>chartPoint.type==="currency"||chartPoint.type==="m3"?fmt0.format(value):fmtNum.format(value)});
+
+  cpTableSub.textContent=`${label} · Zeilen: Länder · Spalten: ausgewählte Datenpunkte. Farbintensität je Spalte nach Wert.`;
+  const columnRanges={};
+  selectedPoints.forEach(point=>{
+    const values=rows.map(rec=>cpValue(rec,point)).filter(v=>v!==null&&v!==undefined&&Number.isFinite(v));
+    columnRanges[point.id]={min:values.length?Math.min(...values):0,max:values.length?Math.max(...values):1};
+  });
+  const sortPoint=selectedPoints[0];
+  const sortedRows=[...rows].sort((a,b)=>(cpValue(b,sortPoint)||0)-(cpValue(a,sortPoint)||0));
+  if(!selectedPoints.length){
+    cpTable.innerHTML='<tbody><tr><td class="cp-empty">Mindestens einen Datenpunkt auswählen.</td></tr></tbody>';
+  }else{
+    cpTable.innerHTML=`<thead><tr><th>Land</th>${selectedPoints.map(p=>`<th>${esc(p.label)}<br><span class="small">${esc(p.unit)}</span></th>`).join("")}</tr></thead>
+      <tbody>${sortedRows.map(rec=>`<tr>
+        <td>${esc(rec.land)}</td>
+        ${selectedPoints.map(point=>{
+          const value=cpValue(rec,point),range=columnRanges[point.id];
+          const bg=value===null||value===undefined||!Number.isFinite(value)?"":landHeatColor(value,range.min,range.max);
+          return `<td style="background:${bg}">${format(value,point.type)}</td>`;
+        }).join("")}
+      </tr>`).join("")}</tbody>`;
+  }
+}
+function initCountryPoints(){
+  if(!document.getElementById("cpWeek"))return;
+  cpLoadState();
+  const weeks=availableDashboardWeeks();
+  cpWeek.innerHTML=weeks.map(week=>`<option value="${week}">KW${String(week).padStart(2,"0")}</option>`).join("");
+  cpWeek.value=String(Math.max(...weeks));
+  cpWeek.addEventListener("change",renderCountryPoints);
+  cpChartPoint.addEventListener("change",()=>{cpChartPointId=cpChartPoint.value;cpSaveState();renderCountryPoints();});
+  document.querySelectorAll('#cpMode button').forEach(btn=>btn.addEventListener("click",()=>{
+    cpMode=btn.dataset.mode;cpSaveState();renderCountryPoints();
+  }));
+}
+
 const SAWLINE_ADDITIVE_TYPES=new Set(["lfm","pieces","fm","m3","minutes"]);
 function annualSum(rows,key){return rows.reduce((sum,row)=>sum+(n(row[key])||0),0)}
 function renderAnnual(){
@@ -3736,6 +3887,7 @@ function renderAnnual(){
     </tr>`).join("")}</tbody>`;
 }
 function updateAll(){
+  renderCountryPoints();
   renderSales();renderProduction();renderSawline();renderKpis();renderOverviewCharts();renderTrends();renderAnnual();renderStatisticsBoard();renderQuality();
   renderLand();renderCountryComparison();renderWorldMap();renderDetails();
   renderKpiWorkspace();
