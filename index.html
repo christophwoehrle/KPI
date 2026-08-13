@@ -1410,11 +1410,31 @@ body.monitor-mode .nav button[data-action="monitor"]{
 @media(max-width:620px){.assistant-ask{flex-wrap:wrap}.assistant-ask-field{min-width:100%}.assistant-ask .dashboard-question-btn{width:100%}}
 
 /* Historie */
-.history-controls{display:flex;flex-wrap:wrap;gap:14px;margin:4px 0 18px}
+.history-controls{display:flex;flex-wrap:wrap;gap:14px;margin:4px 0 16px}
 .history-controls .control{min-width:150px}
-.history-controls select{width:100%}
-.history-controls #historyDataset,.history-controls #historyArticle{min-width:220px}
+/* dunkle Schrift auf hellem Grund (globales select ist weiß) */
+.history-controls select{width:100%;color:var(--ink);background:#fff;border:1px solid var(--line)}
+.history-controls select option{color:#111;background:#fff}
+.history-controls #historyDataset{min-width:240px}
 @media(max-width:620px){.history-controls .control{flex:1 1 100%}}
+.history-articles-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:2px 0 8px}
+.history-articles-head label{color:var(--moss);font-size:12px;font-weight:700}
+.history-articles-actions{display:flex;gap:6px}
+.mini-btn{border:1px solid #c5d0be;background:#fff;color:var(--forest);border-radius:2px;padding:5px 12px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;cursor:pointer}
+.mini-btn:hover{border-color:var(--streit-green)}
+.hist-points{display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 16px}
+.hist-point{display:inline-flex;align-items:center;gap:8px;border:1px solid #c5d0be;background:#fff;color:var(--forest);padding:8px 12px;border-radius:2px;cursor:pointer;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;user-select:none}
+.hist-point:hover{border-color:var(--streit-green)}
+.hist-point .hp-box{position:relative;width:14px;height:14px;flex:0 0 auto;border:1px solid #9fb08c;border-radius:2px;background:#fff}
+.hist-point .hp-dot{width:10px;height:10px;border-radius:50%;flex:0 0 auto}
+.hist-point.active{background:var(--forest);border-color:var(--forest);color:#fff}
+.hist-point.active .hp-box{background:var(--streit-green);border-color:var(--streit-green)}
+.hist-point.active .hp-box:after{content:"";position:absolute;left:4px;top:1px;width:4px;height:8px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
+.hist-point .hp-zeile{font-weight:700;opacity:.7;text-transform:none;letter-spacing:0}
+.history-stack{display:flex;flex-direction:column;gap:16px;margin-bottom:16px}
+.history-stack .card{margin:0}
+.history-stack .chart{height:240px}
+.history-stack-empty{padding:26px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:10px}
 
 /* Reiterleiste umbrechen, damit kein Tab (z. B. Weltkarte) verdeckt wird */
 .nav{flex-wrap:wrap;overflow-x:visible;row-gap:2px}
@@ -1677,18 +1697,19 @@ body.monitor-mode .nav button[data-action="monitor"]{
     <div class="history-controls">
       <div class="control local-control"><label>Datensatz</label><select id="historyDataset"></select></div>
       <div class="control local-control"><label>Jahr</label><select id="historyYear"></select></div>
-      <div class="control local-control"><label>Artikel (Zeile)</label><select id="historyArticle"></select></div>
       <div class="control local-control"><label>KW von</label><select id="historyFrom"></select></div>
       <div class="control local-control"><label>KW bis</label><select id="historyTo"></select></div>
     </div>
-    <div class="kpi-grid" id="historyKpis"></div>
-    <div class="card">
-      <div class="card-title-row">
-        <div><h3 id="historyChartTitle">Zeitstrahl</h3><div class="card-sub" id="historyChartSub"></div></div>
-        <span class="chip" id="historyTrendChip"></span>
+    <div class="history-articles-head">
+      <label>Produkte (Zeile 3–12) – mehrere gemeinsam auf dem gleichen Zeitstrahl</label>
+      <div class="history-articles-actions">
+        <button type="button" class="mini-btn" id="historyAll">Alle</button>
+        <button type="button" class="mini-btn" id="historyNone">Keine</button>
       </div>
-      <div class="chart" id="historyChart"></div>
     </div>
+    <div class="hist-points" id="historyArticles" role="group" aria-label="Produkte auswählen"></div>
+    <div class="kpi-grid" id="historyKpis"></div>
+    <div class="history-stack" id="historyStack"></div>
     <div class="card">
       <h3>Werte je Kalenderwoche</h3>
       <div class="card-sub" id="historyTableSub"></div>

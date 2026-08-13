@@ -4215,6 +4215,41 @@ function historyFillSelect(sel,items,value){
   sel.innerHTML=items.map(it=>`<option value="${esc(String(it.value))}">${esc(it.label)}</option>`).join("");
   if(value!==undefined&&items.some(it=>String(it.value)===String(value)))sel.value=String(value);
 }
+let historySelected=new Set();   // ausgewählte Artikel-Zeilen (mehrere Produkte)
+function historyColorForZeile(ds,zeile){
+  const arts=historyArticles(ds);
+  const idx=arts.findIndex(a=>a.zeile===zeile);
+  return colors[(idx<0?0:idx)%colors.length];
+}
+function historyDefaultSelection(ds){
+  const arts=historyArticles(ds);
+  // Beispielprodukte des Nutzers bevorzugen
+  const wanted=["bretter","contreventement","voliges","latten"];
+  const picked=arts.filter(a=>wanted.some(w=>a.name.toLowerCase().includes(w))).map(a=>a.zeile);
+  return picked.length?picked:arts.slice(0,Math.min(4,arts.length)).map(a=>a.zeile);
+}
+function renderHistoryArticleChips(ds){
+  const host=document.getElementById("historyArticles");
+  if(!host)return;
+  host.innerHTML=historyArticles(ds).map(a=>{
+    const on=historySelected.has(a.zeile);
+    const col=historyColorForZeile(ds,a.zeile);
+    return `<button type="button" class="hist-point${on?" active":""}" data-zeile="${a.zeile}" aria-pressed="${on}">
+      <span class="hp-box"></span>
+      <span class="hp-dot" style="background:${col}"></span>
+      <span>${esc(a.name)}</span>
+      <span class="hp-zeile">Z${a.zeile}</span>
+    </button>`;
+  }).join("");
+  host.querySelectorAll(".hist-point").forEach(btn=>{
+    btn.addEventListener("click",()=>{
+      const z=Number(btn.dataset.zeile);
+      if(historySelected.has(z))historySelected.delete(z); else historySelected.add(z);
+      renderHistoryArticleChips(ds);
+      renderHistory();
+    });
+  });
+}
 function initHistory(){
   const dsSel=document.getElementById("historyDataset");
   if(!dsSel)return;
@@ -4222,9 +4257,8 @@ function initHistory(){
   historyFillSelect(dsSel,datasets.map(d=>({value:d.id,label:d.label})));
   const ds=datasets[0];
   if(!ds){renderHistory();return;}
-  // Artikel
-  historyFillSelect(document.getElementById("historyArticle"),
-    historyArticles(ds).map(a=>({value:a.zeile,label:`Zeile ${a.zeile} · ${a.name}`})));
+  historySelected=new Set(historyDefaultSelection(ds));
+  renderHistoryArticleChips(ds);
   // Jahr (inkl. Vergleich über alle Jahre)
   const years=historyYears(ds);
   const yearItems=[{value:"all",label:"Alle Jahre (Vergleich)"}].concat(years.map(y=>({value:y,label:String(y)})));
@@ -4233,17 +4267,26 @@ function initHistory(){
   const weeks=historyWeeks(ds);
   historyFillSelect(document.getElementById("historyFrom"),weeks.map(w=>({value:w,label:historyKwLabel(w)})),weeks[0]);
   historyFillSelect(document.getElementById("historyTo"),weeks.map(w=>({value:w,label:historyKwLabel(w)})),weeks[weeks.length-1]);
-  ["historyDataset","historyYear","historyArticle","historyFrom","historyTo"].forEach(id=>{
+  ["historyDataset","historyYear","historyFrom","historyTo"].forEach(id=>{
     const el=document.getElementById(id);
     if(el)el.addEventListener("change",()=>onHistoryControlChange(id));
+  });
+  const allBtn=document.getElementById("historyAll"),noneBtn=document.getElementById("historyNone");
+  if(allBtn)allBtn.addEventListener("click",()=>{
+    const d=historyDatasetById(document.getElementById("historyDataset").value);
+    historySelected=new Set(historyArticles(d).map(a=>a.zeile));renderHistoryArticleChips(d);renderHistory();
+  });
+  if(noneBtn)noneBtn.addEventListener("click",()=>{
+    const d=historyDatasetById(document.getElementById("historyDataset").value);
+    historySelected=new Set();renderHistoryArticleChips(d);renderHistory();
   });
 }
 function onHistoryControlChange(changed){
   const ds=historyDatasetById(document.getElementById("historyDataset").value);
   if(!ds)return;
   if(changed==="historyDataset"){
-    historyFillSelect(document.getElementById("historyArticle"),
-      historyArticles(ds).map(a=>({value:a.zeile,label:`Zeile ${a.zeile} · ${a.name}`})));
+    historySelected=new Set(historyDefaultSelection(ds));
+    renderHistoryArticleChips(ds);
     const years=historyYears(ds);
     historyFillSelect(document.getElementById("historyYear"),
       [{value:"all",label:"Alle Jahre (Vergleich)"}].concat(years.map(y=>({value:y,label:String(y)}))),
@@ -4261,91 +4304,90 @@ function onHistoryControlChange(changed){
   renderHistory();
 }
 function renderHistory(){
-  const host=document.getElementById("historyChart");
-  if(!host)return;
+  const stack=document.getElementById("historyStack");
+  if(!stack)return;
   const ds=historyDatasetById((document.getElementById("historyDataset")||{}).value);
   const scopeChip=document.getElementById("historyScope");
+  const kpiHost=document.getElementById("historyKpis");
+  const tableHost=document.getElementById("historyTable");
   if(!ds){
     if(scopeChip)scopeChip.textContent="Keine historischen Daten geladen";
-    host.innerHTML='<div class="empty">Keine historischen Daten vorhanden.</div>';
-    document.getElementById("historyKpis").innerHTML="";
-    document.getElementById("historyTable").innerHTML="";
+    stack.innerHTML='<div class="history-stack-empty">Keine historischen Daten vorhanden.</div>';
+    kpiHost.innerHTML="";tableHost.innerHTML="";
+    document.getElementById("historyTableSub").textContent="";
     return;
   }
-  const zeile=Number(document.getElementById("historyArticle").value);
-  const article=historyArticles(ds).find(a=>a.zeile===zeile)||historyArticles(ds)[0];
   const yearVal=document.getElementById("historyYear").value;
   const from=Number(document.getElementById("historyFrom").value);
   const to=Number(document.getElementById("historyTo").value);
   const years=historyYears(ds);
   const activeYears=(yearVal==="all")?years:[Number(yearVal)];
-  // Labels: KW-Bereich von..bis
+  const primaryYear=activeYears[activeYears.length-1];
   const weeksAll=historyWeeks(ds).filter(w=>w>=from&&w<=to);
   const labels=weeksAll.map(historyKwLabel);
-  const valOf=(year,kw)=>{
+  const arts=historyArticles(ds);
+  const selected=arts.filter(a=>historySelected.has(a.zeile));
+  const valOf=(zeile,year,kw)=>{
     const r=ds.rows.find(x=>x.Jahr===year&&x["KW Nr."]===kw&&x.Zeile===zeile);
     return r?n(r[ds.valueKey]):null;
   };
-  const series=activeYears.map((year,i)=>({
-    name:String(year),
-    color:colors[i%colors.length],
-    values:weeksAll.map(w=>valOf(year,w)),
-    format:v=>fmt2.format(v)+" "+ds.unit
-  }));
   // Scope-Chip
   if(scopeChip){
-    const files=new Set(ds.rows.filter(r=>r.Zeile===zeile&&activeYears.includes(r.Jahr)&&r["KW Nr."]>=from&&r["KW Nr."]<=to).map(r=>r.Quelldatei));
-    scopeChip.textContent=`${activeYears.join(" · ")} · ${weeksAll.length} KW · ${files.size} Dateien`;
+    const files=new Set(ds.rows.filter(r=>historySelected.has(r.Zeile)&&activeYears.includes(r.Jahr)&&r["KW Nr."]>=from&&r["KW Nr."]<=to).map(r=>r.Quelldatei));
+    scopeChip.textContent=`${selected.length} Produkte · ${activeYears.join(" · ")} · ${weeksAll.length} KW · ${files.size} Dateien`;
   }
-  // Chart-Titel/Untertitel
-  document.getElementById("historyChartTitle").textContent=`${ds.label} · ${article?article.name:""}`;
-  document.getElementById("historyChartSub").textContent=`Zeile ${zeile}, Spalte D · ${historyKwLabel(from)}–${historyKwLabel(to)} · Preis in ${ds.unit}`;
-  lineChart("historyChart",labels,series,{tick:v=>fmt0.format(v)});
-  // Trend-Chip: Veränderung Erst→Letzt der jüngsten aktiven Reihe
-  const primary=series[series.length-1];
-  const firstV=primary.values.find(v=>v!==null);
-  const lastV=[...primary.values].reverse().find(v=>v!==null);
-  const trendChip=document.getElementById("historyTrendChip");
-  if(trendChip){
+  if(!selected.length){
+    stack.innerHTML='<div class="history-stack-empty">Bitte oben mindestens ein Produkt auswählen.</div>';
+    kpiHost.innerHTML="";tableHost.innerHTML="";
+    document.getElementById("historyTableSub").textContent="";
+    return;
+  }
+  // KPI je Produkt: aktueller Preis (jüngstes Jahr, letzte KW) + Veränderung im Zeitraum
+  kpiHost.innerHTML=selected.map(a=>{
+    const vals=weeksAll.map(w=>valOf(a.zeile,primaryYear,w));
+    const firstV=vals.find(v=>v!==null),lastV=[...vals].reverse().find(v=>v!==null);
+    let meta=String(primaryYear);
     if(firstV!=null&&lastV!=null&&firstV!==0){
       const d=(lastV-firstV)/firstV*100;
-      trendChip.textContent=`${primary.name}: ${d>=0?"+":""}${fmt2.format(d)} % im Zeitraum`;
-      trendChip.style.color=d>=0?"#2f7d32":"#b23b3b";
-    }else{trendChip.textContent="";}
-  }
-  // KPIs (auf jüngste aktive Reihe)
-  const nums=primary.values.filter(v=>v!==null);
-  const avg=nums.length?nums.reduce((a,b)=>a+b,0)/nums.length:null;
-  const mn=nums.length?Math.min(...nums):null;
-  const mx=nums.length?Math.max(...nums):null;
-  document.getElementById("historyKpis").innerHTML=[
-    detailKpi(`Aktuell (${historyKwLabel(to)})`,lastV??null,ds.type,primary.name),
-    detailKpi(`Start (${historyKwLabel(from)})`,firstV??null,ds.type,primary.name),
-    detailKpi("Ø im Zeitraum",avg,ds.type,`${nums.length} Wochen`),
-    detailKpi("Min",mn,ds.type,primary.name),
-    detailKpi("Max",mx,ds.type,primary.name)
-  ].join("");
-  // Tabelle: KW | je Jahr Preis (+ Δ Vorwoche für Einzeljahr)
-  const single=activeYears.length===1;
-  const head=`<thead><tr><th>KW</th>${activeYears.map(y=>`<th>${y} · Preis</th>`).join("")}${single?"<th>Δ Vorwoche</th><th>Index (Start=100)</th>":""}</tr></thead>`;
-  let prev=null;const base=firstV;
-  const body=weeksAll.map((w,idx)=>{
-    const cells=activeYears.map(y=>{const v=valOf(y,w);return `<td>${v==null?"–":format(v,ds.type)}</td>`;}).join("");
-    let extra="";
-    if(single){
-      const v=valOf(activeYears[0],w);
-      let dCell="–",iCell="–";
-      if(v!=null){
-        if(prev!=null&&prev!==0){const dd=(v-prev)/prev*100;dCell=`<span style="color:${dd>=0?"#2f7d32":"#b23b3b"}">${dd>=0?"+":""}${fmt2.format(dd)} %</span>`;}
-        if(base){iCell=fmt2.format(v/base*100);}
-        prev=v;
-      }
-      extra=`<td>${dCell}</td><td>${iCell}</td>`;
+      meta=`${primaryYear} · ${d>=0?"+":""}${fmt2.format(d)} % im Zeitraum`;
     }
-    return `<tr><td><b>${historyKwLabel(w)}</b></td>${cells}${extra}</tr>`;
+    return detailKpi(a.name,lastV??null,ds.type,meta);
   }).join("");
-  document.getElementById("historyTable").innerHTML=head+"<tbody>"+body+"</tbody>";
-  document.getElementById("historyTableSub").textContent=`${article?article.name:""} · Quelle: ${ds.label} (${activeYears.join(", ")})`;
+  // Ein Zeitstrahl-Chart je Produkt (untereinander), gleicher KW-Achse
+  stack.innerHTML="";
+  selected.forEach(a=>{
+    const chartId=`historyChart_${a.zeile}`;
+    const card=document.createElement("div");
+    card.className="card";
+    card.innerHTML=`<div class="card-title-row">
+        <div><h3>${esc(a.name)}</h3><div class="card-sub">Zeile ${a.zeile}, Spalte D · ${esc(historyKwLabel(from))}–${esc(historyKwLabel(to))} · ${esc(ds.unit)}</div></div>
+        <span class="chip" data-trend="${a.zeile}"></span>
+      </div>
+      <div class="chart" id="${chartId}"></div>`;
+    stack.append(card);
+    // Reihen: bei "Alle Jahre" je Jahr eine Linie, sonst eine Linie in Produktfarbe
+    const series=(activeYears.length>1)
+      ? activeYears.map((year,i)=>({name:String(year),color:colors[i%colors.length],values:weeksAll.map(w=>valOf(a.zeile,year,w)),format:v=>fmt2.format(v)+" "+ds.unit}))
+      : [{name:`${a.name} (${primaryYear})`,color:historyColorForZeile(ds,a.zeile),values:weeksAll.map(w=>valOf(a.zeile,primaryYear,w)),format:v=>fmt2.format(v)+" "+ds.unit}];
+    lineChart(chartId,labels,series,{tick:v=>fmt0.format(v)});
+    // Trend-Chip der jüngsten Reihe
+    const prim=series[series.length-1];
+    const fV=prim.values.find(v=>v!==null),lV=[...prim.values].reverse().find(v=>v!==null);
+    const chip=card.querySelector(`[data-trend="${a.zeile}"]`);
+    if(chip&&fV!=null&&lV!=null&&fV!==0){
+      const d=(lV-fV)/fV*100;
+      chip.textContent=`${prim.name}: ${d>=0?"+":""}${fmt2.format(d)} %`;
+      chip.style.color=d>=0?"#2f7d32":"#b23b3b";
+    }
+  });
+  // Vergleichstabelle: KW × Produkt (Preise im primären Jahr)
+  const head=`<thead><tr><th>KW</th>${selected.map(a=>`<th>${esc(a.name)}</th>`).join("")}</tr></thead>`;
+  const body=weeksAll.map(w=>{
+    const cells=selected.map(a=>{const v=valOf(a.zeile,primaryYear,w);return `<td>${v==null?"–":format(v,ds.type)}</td>`;}).join("");
+    return `<tr><td><b>${historyKwLabel(w)}</b></td>${cells}</tr>`;
+  }).join("");
+  tableHost.innerHTML=head+"<tbody>"+body+"</tbody>";
+  document.getElementById("historyTableSub").textContent=`Preise ${primaryYear} · ${selected.length} Produkte · Quelle: ${ds.label}${activeYears.length>1?" (Charts zeigen alle Jahre im Vergleich)":""}`;
 }
 
 function updateAll(){
