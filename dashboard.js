@@ -529,6 +529,7 @@ function mergeAnyImportedBundle(bundle,{persist=false}={}){
 }
 
 function mergeImportedBundle(bundle,{persist=false}={}){
+  historyRecordBundle(bundle);   // Mehrjahres-Speicher der Historie füllen (überschreibt Jahre nicht)
   const previousWeekly=DATA.weekly.filter(row=>row["KW Nr."]<bundle.week).sort((a,b)=>b["KW Nr."]-a["KW Nr."])[0]||null;
   DATA.weekly=DATA.weekly.filter(row=>row["KW Nr."]!==bundle.week);
   DATA.weekly.push(bundle.weekly);
@@ -4253,6 +4254,32 @@ function historyDashboardYear(){
   const wk=(DATA.weekly&&DATA.weekly[0])||null;
   return wk?historyYearFromFile(wk.Quelldatei,2026):2026;
 }
+function historyRowYear(row,fallback){
+  if(row&&row.Jahr!==undefined&&row.Jahr!==null&&row.Jahr!=="")return Number(row.Jahr);
+  const y=historyYearFromFile(row&&row.Quelldatei,null);
+  return y||fallback;
+}
+/* Eigener Mehrjahres-Speicher NUR für die Historie: sammelt alle hochgeladenen Wochen über
+   alle Jahre, ohne die (einjährige) Logik der übrigen Fenster zu verändern. */
+function historyInitStores(){
+  const sy=historyDashboardYear();
+  DATA.weeklyHistory=(DATA.weekly||[]).map(r=>({...r,Jahr:historyRowYear(r,sy)}));
+  DATA.salesHistory=(DATA.salesBreakdown||[]).map(r=>({...r,Jahr:historyRowYear(r,sy)}));
+}
+function historyEnsureStores(){
+  if(!Array.isArray(DATA.weeklyHistory)||!Array.isArray(DATA.salesHistory))historyInitStores();
+}
+function historyUpsertStore(store,rows,year,week){
+  const kept=(store||[]).filter(r=>!(Number(r.Jahr)===Number(year)&&Number(r["KW Nr."])===Number(week)));
+  (rows||[]).forEach(r=>{ if(r)kept.push({...r,Jahr:Number(year)}); });
+  return kept;
+}
+function historyRecordBundle(bundle){
+  historyEnsureStores();
+  const year=bundle.year||historyDashboardYear(),week=bundle.week;
+  if(bundle.weekly)DATA.weeklyHistory=historyUpsertStore(DATA.weeklyHistory,[bundle.weekly],year,week);
+  if(Array.isArray(bundle.salesBreakdown))DATA.salesHistory=historyUpsertStore(DATA.salesHistory,bundle.salesBreakdown,year,week);
+}
 /* Baut aus normalisierten Datensätzen {zeile,name,unit,type,year,kw,value} ein Historie-Dataset. */
 function historyBuildDataset(id,label,records,defUnit,defType){
   if(!records.length)return null;
@@ -4283,26 +4310,29 @@ function historyUnitTypeForWeeklyKey(key){
 }
 function historyBuildAllDatasets(){
   const list=[],dy=historyDashboardYear();
+  historyEnsureStores();
+  const salesSrc=DATA.salesHistory&&DATA.salesHistory.length?DATA.salesHistory:(DATA.salesBreakdown||[]);
+  const weeklySrc=DATA.weeklyHistory&&DATA.weeklyHistory.length?DATA.weeklyHistory:(DATA.weekly||[]);
   // 1./2. Umsatzuntergliederung: Ø-Preis (€/m³) und Menge (m³) je Produkt
-  if(Array.isArray(DATA.salesBreakdown)&&DATA.salesBreakdown.length){
-    const cats=[];DATA.salesBreakdown.forEach(r=>{if(!cats.includes(r.Kategorie))cats.push(r.Kategorie);});
+  if(salesSrc.length){
+    const cats=[];salesSrc.forEach(r=>{if(!cats.includes(r.Kategorie))cats.push(r.Kategorie);});
     const zeileOf=cat=>3+cats.indexOf(cat);
-    const priceRecs=DATA.salesBreakdown.map(r=>({zeile:zeileOf(r.Kategorie),name:r.Kategorie,unit:"€/m³",type:"price",year:dy,kw:r["KW Nr."],value:r["EUR (€/m³)"]}));
-    const mengeRecs=DATA.salesBreakdown.map(r=>({zeile:zeileOf(r.Kategorie),name:r.Kategorie,unit:"m³",type:"m3",year:dy,kw:r["KW Nr."],value:r["Menge (m³)"]}));
+    const priceRecs=salesSrc.map(r=>({zeile:zeileOf(r.Kategorie),name:r.Kategorie,unit:"€/m³",type:"price",year:historyRowYear(r,dy),kw:r["KW Nr."],value:r["EUR (€/m³)"]}));
+    const mengeRecs=salesSrc.map(r=>({zeile:zeileOf(r.Kategorie),name:r.Kategorie,unit:"m³",type:"m3",year:historyRowYear(r,dy),kw:r["KW Nr."],value:r["Menge (m³)"]}));
     const dPrice=historyBuildDataset("umsatzPreis","Umsatz · Ø-Preis je Produkt (€/m³)",priceRecs,"€/m³","price");
     const dMenge=historyBuildDataset("umsatzMenge","Umsatz · Menge je Produkt (m³)",mengeRecs,"m³","m3");
     if(dPrice)list.push(dPrice);
     if(dMenge)list.push(dMenge);
   }
   // 3. Wochenkennzahlen (Wochenbericht) – alle numerischen Spalten als Kennzahlen
-  if(Array.isArray(DATA.weekly)&&DATA.weekly.length){
-    const skip=new Set(["KW","KW Nr.","Quelldatei"]);
-    const keys=Object.keys(DATA.weekly[0]).filter(k=>!skip.has(k)&&DATA.weekly.some(r=>typeof r[k]==="number"));
+  if(weeklySrc.length){
+    const skip=new Set(["KW","KW Nr.","Quelldatei","Jahr"]);
+    const keys=Object.keys(weeklySrc[0]).filter(k=>!skip.has(k)&&weeklySrc.some(r=>typeof r[k]==="number"));
     const recs=[];
     keys.forEach((key,idx)=>{
       const ut=historyUnitTypeForWeeklyKey(key);
-      DATA.weekly.forEach(r=>{
-        recs.push({zeile:idx,name:key,unit:ut.unit,type:ut.type,year:historyYearFromFile(r.Quelldatei,dy),kw:r["KW Nr."],value:r[key]});
+      weeklySrc.forEach(r=>{
+        recs.push({zeile:idx,name:key,unit:ut.unit,type:ut.type,year:historyRowYear(r,dy),kw:r["KW Nr."],value:r[key]});
       });
     });
     const d=historyBuildDataset("wochenKennzahlen","Wochenkennzahlen (Wochenbericht)",recs,"","number");
@@ -4548,7 +4578,7 @@ function updateAll(){
   renderKpiWorkspace();
   applyClosableStandardWindows();
 }
-loadClosedStandardWindows();applyStoredImports();initControls();updateAll();
+loadClosedStandardWindows();historyInitStores();applyStoredImports();initControls();updateAll();
 window.addEventListener("resize",()=>{clearTimeout(window.__rt);window.__rt=setTimeout(updateAll,120)});
 
 
