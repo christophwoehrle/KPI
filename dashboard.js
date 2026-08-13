@@ -262,108 +262,213 @@ function parseSawlineReport(matrix,fileName){
   });
   return {kind:"sawline",week,weekLabel,year,yearShort,fileName,period,rows,warnings:validation.warnings};
 }
+/* Layout-tolerantes Auslesen: Abschnitte werden über ihre Beschriftungen gefunden,
+   damit unterschiedliche Berichtsvorlagen (z. B. 2025 vs. 2026) korrekt eingelesen werden. */
+function normRK(v){return String(v==null?"":v).replace(/\s+/g," ").trim().toLowerCase();}
+function findRC(matrix,text,{fromRow=1,includes=false}={}){
+  const t=normRK(text);
+  for(let r=fromRow;r<=matrix.length;r++){const row=matrix[r-1]||[];
+    for(let c=0;c<row.length;c++){const cell=normRK(row[c]);
+      if(cell&&(includes?cell.includes(t):cell===t))return {row:r,col:c};}}
+  return null;
+}
+function findRowByCol(matrix,col,text,{fromRow=1,includes=false}={}){
+  const t=normRK(text);
+  for(let r=fromRow;r<=matrix.length;r++){const cell=normRK((matrix[r-1]||[])[col]);
+    if(cell&&(includes?cell.includes(t):cell===t))return r;}
+  return null;
+}
+function findColInRow(matrix,row,text,{fromCol=0,includes=true}={}){
+  if(row==null)return -1;
+  const t=normRK(text);const cells=matrix[row-1]||[];
+  for(let c=fromCol;c<cells.length;c++){const cell=normRK(cells[c]);
+    if(cell&&(includes?cell.includes(t):cell===t))return c;}
+  return -1;
+}
+function numAt(matrix,row,col){return (row!=null&&col!=null&&col>=0)?parseReportNumber(reportCell(matrix,row,col)):null;}
 function parseWeeklyReport(matrix,fileName){
   const fileMeta=weeklyFileMeta(fileName);
   const week=fileMeta.week,year=fileMeta.year,weekLabel="KW"+String(week).padStart(2,"0");
-  // Umsatzuntergliederung: Produkte in Zeilen 3–12 (A Name, C Menge, D EUR/€/m³, E M%)
-  const salesBreakdown=REPORT_SALES_CATEGORIES.map((category,index)=>({
-    "KW":weekLabel,"KW Nr.":week,"Kategorie":category,
-    "Menge (m³)":parseReportNumber(reportCell(matrix,3+index,2)),
-    "EUR (€/m³)":parseReportNumber(reportCell(matrix,3+index,3)),
-    "M%":parseReportNumber(reportCell(matrix,3+index,4))
-  }));
+
+  // ---------- Umsatzuntergliederung (Anker: "Hauptware Säge") ----------
+  const hw=findRC(matrix,"Hauptware Säge");
+  let salesNameCol=0,salesMengeCol=-1,salesEurCol=-1,salesMpCol=-1,salesHeaderRow=null,salesStart=1;
+  if(hw){
+    salesNameCol=hw.col;salesStart=hw.row;
+    for(let r=hw.row-1;r>=Math.max(1,hw.row-5);r--){
+      if(findColInRow(matrix,r,"eur")>=0&&findColInRow(matrix,r,"m%")>=0){salesHeaderRow=r;break;}
+    }
+    salesMengeCol=findColInRow(matrix,salesHeaderRow,"menge");
+    salesEurCol=findColInRow(matrix,salesHeaderRow,"eur");
+    salesMpCol=findColInRow(matrix,salesHeaderRow,"m%");
+    if(salesMengeCol<0)salesMengeCol=salesNameCol+2;
+    if(salesEurCol<0)salesEurCol=salesNameCol+3;
+    if(salesMpCol<0)salesMpCol=salesNameCol+4;
+  }
+  const salesBreakdown=REPORT_SALES_CATEGORIES.map(category=>{
+    const row=hw?findRowByCol(matrix,salesNameCol,category,{fromRow:salesStart}):null;
+    return {
+      "KW":weekLabel,"KW Nr.":week,"Kategorie":category,
+      "Menge (m³)":numAt(matrix,row,salesMengeCol),
+      "EUR (€/m³)":numAt(matrix,row,salesEurCol),
+      "M%":numAt(matrix,row,salesMpCol)
+    };
+  });
+  const gesamtRow=hw?findRowByCol(matrix,salesNameCol,"Gesamt",{fromRow:salesStart}):null;
+  const umsatzMengeGesamt=numAt(matrix,gesamtRow,salesMengeCol);
+  const preisGesamt=numAt(matrix,gesamtRow,salesEurCol);
+
+  // ---------- Länder (Anker: "Land") ----------
+  const landHead=findRC(matrix,"Land");
   const countryShares={},countryPrices={};
-  // Länder: Zeilen 3–15 (F Land, G M%, H Ø-Preis HW-Säge, I Ø-Preis Gesamt)
-  const countryComparison=REPORT_COUNTRIES.map((country,index)=>{
-    const row=3+index;
+  let landCol=-1,cMpCol=-1,cHwPriceCol=-1,cGesamtPriceCol=-1;
+  if(landHead){
+    landCol=landHead.col;
+    cMpCol=findColInRow(matrix,landHead.row,"m%",{fromCol:landCol+1,includes:false});
+    if(cMpCol<0)cMpCol=findColInRow(matrix,landHead.row,"m%",{fromCol:landCol+1});
+    cGesamtPriceCol=findColInRow(matrix,landHead.row,"gesamt",{fromCol:landCol+1});
+    cHwPriceCol=findColInRow(matrix,landHead.row,"ø-preis hw",{fromCol:landCol+1});
+  }
+  const countryComparison=REPORT_COUNTRIES.map(country=>{
+    const row=landHead?findRowByCol(matrix,landCol,country,{fromRow:landHead.row}):null;
     const record={
       "KW":weekLabel,"KW Nr.":week,"Jahr":year,"Land":country,
-      "M%":parseReportNumber(reportCell(matrix,row,6)),
-      "M% HW-Säge":null,
-      "M% SW":null,
-      "Ø-Preis HW-Säge":parseReportNumber(reportCell(matrix,row,7)),
-      "Ø-Preis Gesamt":parseReportNumber(reportCell(matrix,row,8)),
+      "M%":numAt(matrix,row,cMpCol),
+      "M% HW-Säge":null,"M% SW":null,
+      "Ø-Preis HW-Säge":numAt(matrix,row,cHwPriceCol),
+      "Ø-Preis Gesamt":numAt(matrix,row,cGesamtPriceCol),
       "Quelldatei":fileName
     };
     countryShares[country]=record["M%"];
     countryPrices[country]=record["Ø-Preis Gesamt"];
     return record;
   });
-  // Veredelungen: Zeilen 18–20 (C Schnittholz gesamt, D Hauptware Säge, F NE Sägewerk, G Rest)
+
+  // ---------- Veredelungen (Anker: "Veredelungen") ----------
+  const verHead=findRC(matrix,"Veredelungen");
   const refinement={};
-  [["Trocknung",18],["Hobelung",19],["Imprägnierung",20]].forEach(([name,row])=>{
+  const verTotalCol=findColInRow(matrix,verHead?verHead.row:null,"schnittholz");
+  const verMainCol=findColInRow(matrix,verHead?verHead.row:null,"hauptware");
+  const verSideCol=findColInRow(matrix,verHead?verHead.row:null,"ne sägewerk");
+  const verRestCol=findColInRow(matrix,verHead?verHead.row:null,"rest");
+  ["Trocknung","Hobelung","Imprägnierung"].forEach(name=>{
+    const row=verHead?findRowByCol(matrix,verHead.col,name,{fromRow:verHead.row}):null;
     refinement[name]={
-      total:parseReportNumber(reportCell(matrix,row,2)),
-      main:parseReportNumber(reportCell(matrix,row,3)),
-      side:parseReportNumber(reportCell(matrix,row,5)),
-      rest:parseReportNumber(reportCell(matrix,row,6))
+      total:numAt(matrix,row,verTotalCol),main:numAt(matrix,row,verMainCol),
+      side:numAt(matrix,row,verSideCol),rest:numAt(matrix,row,verRestCol)
     };
   });
-  // Leistung Produktion: Zeilen 27–31 (C Aktuell, D YTD lfd. Jahr, E YTD Vorjahr, F Differenz)
+
+  // ---------- Leistung Produktion (Anker: "Leistung Produktion") ----------
+  const prodHead=findRC(matrix,"Leistung Produktion",{includes:true});
+  const prodColRow=prodHead?prodHead.row+1:null;
+  const pAktCol=findColInRow(matrix,prodColRow,"aktuell");
+  const pKum1Col=findColInRow(matrix,prodColRow,"kumuliert",{fromCol:pAktCol>=0?pAktCol+1:0});
+  const pKum2Col=findColInRow(matrix,prodColRow,"kumuliert",{fromCol:pKum1Col>=0?pKum1Col+1:0});
+  const pDiffCol=findColInRow(matrix,prodColRow,"differenz");
   const production={};
-  [["Säge",27],["Gatter",28],["Gesamt Fm",29],["Gesamt m³",30],["RHP",31]].forEach(([name,row])=>{
+  [["Säge","säge"],["Gatter","gatter"],["Gesamt Fm","gesamt fm"],["Gesamt m³","gesamt m³"],["RHP","rhp"]].forEach(([name,key])=>{
+    const row=prodHead?findRowByCol(matrix,prodHead.col,key,{fromRow:prodHead.row}):null;
     production[name]={
-      current:parseReportNumber(reportCell(matrix,row,2)),
-      ytd2026:parseReportNumber(reportCell(matrix,row,3)),
-      ytd2025:parseReportNumber(reportCell(matrix,row,4)),
-      difference:parseReportNumber(reportCell(matrix,row,5))
+      current:numAt(matrix,row,pAktCol),ytd2026:numAt(matrix,row,pKum1Col),
+      ytd2025:numAt(matrix,row,pKum2Col),difference:numAt(matrix,row,pDiffCol)
     };
   });
   const productionCurrent=REPORT_PRODUCTION_CATEGORIES.map(name=>({
     "KW":weekLabel,"KW Nr.":week,"Kennzahl":name,
-    "Aktuell":production[name].current,
-    "Einheit":name==="Gesamt m³"?"m³":"fm"
+    "Aktuell":production[name]?.current??null,"Einheit":name==="Gesamt m³"?"m³":"fm"
   }));
-  // A-Eingang: Zeile 35 Gesamt (C gesamt, D getrocknet, E gehobelt, F reserviert), 36 Frankreich, 37 übrige
+
+  // ---------- Deckungsbeitrag (Anker: "Deckungsbeitrag") ----------
+  const dbHead=findRC(matrix,"Deckungsbeitrag");
+  const dbNettoCol=findColInRow(matrix,dbHead?dbHead.row:null,"db netto");
+  const dbEurCol=findColInRow(matrix,dbHead?dbHead.row:null,"eur");
+  const dbRow=dbHead?findRowByCol(matrix,dbHead.col,"SH-Gesamt",{fromRow:dbHead.row,includes:true}):null;
+  const dbNetto=numAt(matrix,dbRow,dbNettoCol),dbProM3=numAt(matrix,dbRow,dbEurCol);
+
+  // ---------- A-Eingang (Anker: "A-Eingang") ----------
+  const aeHead=findRC(matrix,"A-Eingang",{includes:true});
+  const aeColRow=aeHead?aeHead.row+1:null;
+  const aeTotalCol=findColInRow(matrix,aeColRow,"gesamt");
+  const aeDriedCol=findColInRow(matrix,aeColRow,"getrocknet");
+  const aePlanedCol=findColInRow(matrix,aeColRow,"gehobelt");
+  const aeReservedCol=findColInRow(matrix,aeColRow,"reserviert");
+  const aeGesamtRow=aeHead?findRowByCol(matrix,aeHead.col,"Gesamt",{fromRow:aeHead.row}):null;
+  const aeFranceRow=aeHead?findRowByCol(matrix,aeHead.col,"frankreich",{fromRow:aeHead.row,includes:true}):null;
+  const aeOtherRow=aeHead?findRowByCol(matrix,aeHead.col,"übrige",{fromRow:aeHead.row,includes:true}):null;
   const incoming={
-    total:parseReportNumber(reportCell(matrix,35,2)),
-    dried:parseReportNumber(reportCell(matrix,35,3)),
-    planed:parseReportNumber(reportCell(matrix,35,4)),
-    reserved:parseReportNumber(reportCell(matrix,35,5)),
-    franceTotal:parseReportNumber(reportCell(matrix,36,2)),
-    franceDried:parseReportNumber(reportCell(matrix,36,3)),
-    otherTotal:parseReportNumber(reportCell(matrix,37,2)),
-    otherDried:parseReportNumber(reportCell(matrix,37,3))
+    total:numAt(matrix,aeGesamtRow,aeTotalCol),dried:numAt(matrix,aeGesamtRow,aeDriedCol),
+    planed:numAt(matrix,aeGesamtRow,aePlanedCol),reserved:numAt(matrix,aeGesamtRow,aeReservedCol),
+    franceTotal:numAt(matrix,aeFranceRow,aeTotalCol),franceDried:numAt(matrix,aeFranceRow,aeDriedCol),
+    otherTotal:numAt(matrix,aeOtherRow,aeTotalCol),otherDried:numAt(matrix,aeOtherRow,aeDriedCol)
   };
-  // Auftragsbestand: Zeilen 40–43. 4W: A Ziel, B Gesamt, C mit Reserv. | 8W: D Ziel, E Gesamt, F mit Reserv.
+
+  // ---------- Auftragsbestand 4W/8W (Anker: "Auftragsbestand") ----------
+  const abHead=findRC(matrix,"Auftragsbestand");
+  const abG1=findColInRow(matrix,abHead?abHead.row:null,"gesamt",{fromCol:abHead?abHead.col+1:0});
+  const abR1=findColInRow(matrix,abHead?abHead.row:null,"reserv",{fromCol:abG1>=0?abG1+1:0});
+  const abG2=findColInRow(matrix,abHead?abHead.row:null,"gesamt",{fromCol:abR1>=0?abR1+1:0});
+  const abR2=findColInRow(matrix,abHead?abHead.row:null,"reserv",{fromCol:abG2>=0?abG2+1:0});
   const backlog=[];
-  for(let row=40;row<=43;row++){
-    backlog.push({target:String(reportCell(matrix,row,0)||"").replace(/\s/g,""),total:parseReportNumber(reportCell(matrix,row,1)),reserved:parseReportNumber(reportCell(matrix,row,2))});
-    backlog.push({target:String(reportCell(matrix,row,3)||"").replace(/\s/g,""),total:parseReportNumber(reportCell(matrix,row,4)),reserved:parseReportNumber(reportCell(matrix,row,5))});
+  if(abHead){
+    for(let row=abHead.row+1;row<=abHead.row+4;row++){
+      backlog.push({total:numAt(matrix,row,abG1),reserved:numAt(matrix,row,abR1)});
+      backlog.push({total:numAt(matrix,row,abG2),reserved:numAt(matrix,row,abR2)});
+    }
   }
   const firstFour=backlog.filter((_,index)=>index%2===0);
   const sum4=firstFour.reduce((sum,item)=>sum+(item.total||0),0);
   const sum4Reserved=firstFour.reduce((sum,item)=>sum+(item.reserved||0),0);
   const sum8=backlog.reduce((sum,item)=>sum+(item.total||0),0);
   const sum8Reserved=backlog.reduce((sum,item)=>sum+(item.reserved||0),0);
-  // 4-Wochenfenster: Zeile 46 (B +/-, C 4W gemeldet, D Reserv.%, E Lagerbestand)
-  const windowPlusMinus=parseReportNumber(reportCell(matrix,46,1));
-  const reported4=parseReportNumber(reportCell(matrix,46,2));
-  const reservationPct=parseReportNumber(reportCell(matrix,46,3));
-  const lagerbestand=parseReportNumber(reportCell(matrix,46,4));
-  // Auftragsbestand Trocknung: Zeilen 49–51 (A Ziel-KW, B Wert)
+
+  // ---------- 4-Wochenfenster (+/-, Reserv.%, Lagerbestand) ----------
+  const wfHead=findRC(matrix,"4-Wochenfenster");
+  const pmRow=wfHead?findRowByCol(matrix,wfHead.col,"+/-",{fromRow:wfHead.row,includes:true}):null;
+  const windowPlusMinus=numAt(matrix,pmRow,wfHead?wfHead.col+1:-1);
+  let reported4=numAt(matrix,pmRow,wfHead?wfHead.col+2:-1);
+  const reservCol=findColInRow(matrix,wfHead?wfHead.row:null,"reserv");
+  const lagerCol=findColInRow(matrix,wfHead?wfHead.row:null,"lagerbestand");
+  const reservationPct=numAt(matrix,pmRow,reservCol);
+  const lagerbestand=numAt(matrix,pmRow,lagerCol);
+  if(reported4===null)reported4=sum4||null;
+
+  // ---------- Auftragsbestand Trocknung ----------
+  const dtHead=findRC(matrix,"Auftragsbestand Trocknung",{includes:true});
   const drying=[];
-  for(let row=49;row<=51;row++)drying.push({
-    target:String(reportCell(matrix,row,0)||"").replace("TR ","").replace(/\s/g,""),
-    value1:parseReportNumber(reportCell(matrix,row,1)),
-    value2:null
-  });
-  // Anzahl Verladungen: Zeilen 49–53 (E Tag, F Anzahl), Zeile 54 Gesamt (F Summe, G Ø)
+  if(dtHead){
+    for(let row=dtHead.row+1;row<=dtHead.row+3;row++){
+      drying.push({
+        target:String(reportCell(matrix,row,dtHead.col)||"").replace(/tr /i,"").replace(/\s/g,""),
+        value1:numAt(matrix,row,dtHead.col+1),value2:null
+      });
+    }
+  }
+
+  // ---------- Anzahl der Verladungen ----------
+  const shHead=findRC(matrix,"Anzahl der Verladungen",{includes:true});
+  const shDayCol=shHead?shHead.col:-1,shValCol=shHead?shHead.col+1:-1;
   const weekdays=["Montag","Dienstag","Mittwoch","Donnerstag","Freitag"];
   const shipmentDays={};
-  weekdays.forEach((day,index)=>shipmentDays[day]=parseReportNumber(reportCell(matrix,49+index,5)));
-  const shipmentTotal=parseReportNumber(reportCell(matrix,54,5));
-  const shipmentAverage=parseReportNumber(reportCell(matrix,54,6));
+  weekdays.forEach(day=>{
+    const row=shHead?findRowByCol(matrix,shDayCol,day,{fromRow:shHead.row}):null;
+    shipmentDays[day]=numAt(matrix,row,shValCol);
+  });
+  const shGesamtRow=shHead?findRowByCol(matrix,shDayCol,"Gesamt",{fromRow:shHead.row}):null;
+  const shipmentTotal=numAt(matrix,shGesamtRow,shValCol);
+  const shipmentAverage=numAt(matrix,shGesamtRow,shValCol+1);
+
+  const P=name=>production[name]||{current:null,ytd2026:null,ytd2025:null,difference:null};
   const weekly={
     "KW":weekLabel,"KW Nr.":week,
-    "Umsatzmenge gesamt (m³)":parseReportNumber(reportCell(matrix,15,2)),
-    "Ø Preis gesamt (€/m³)":parseReportNumber(reportCell(matrix,15,3)),
-    "DB Netto (€)":parseReportNumber(reportCell(matrix,23,3)),
-    "DB (€/m³)":parseReportNumber(reportCell(matrix,23,4)),
-    "Produktion KW gesamt (fm)":production["Gesamt Fm"].current,
-    "Produktion YTD 2026 (fm)":production["Gesamt Fm"].ytd2026,
-    "Produktion YTD 2025 (fm)":production["Gesamt Fm"].ytd2025,
-    "YTD Differenz (fm)":production["Gesamt Fm"].difference,
+    "Umsatzmenge gesamt (m³)":umsatzMengeGesamt,
+    "Ø Preis gesamt (€/m³)":preisGesamt,
+    "DB Netto (€)":dbNetto,
+    "DB (€/m³)":dbProM3,
+    "Produktion KW gesamt (fm)":P("Gesamt Fm").current,
+    "Produktion YTD 2026 (fm)":P("Gesamt Fm").ytd2026,
+    "Produktion YTD 2025 (fm)":P("Gesamt Fm").ytd2025,
+    "YTD Differenz (fm)":P("Gesamt Fm").difference,
     "Auftragseingang gesamt (m³)":incoming.total,
     "Auftragsbestand 4W (m³)":reported4,
     "Auftragsbestand 8W gesamt (m³)":sum8,
@@ -372,17 +477,17 @@ function parseWeeklyReport(matrix,fileName){
     "Reservierungsquote":reservationPct===null?null:reservationPct/100,
     "Verladungen gesamt":shipmentTotal,
     "Verladungen Ø/Tag":shipmentAverage,
-    "Produktion KW (m³)":production["Gesamt m³"].current,
-    "Produktion YTD 2026 (m³)":production["Gesamt m³"].ytd2026,
-    "Produktion YTD 2025 (m³)":production["Gesamt m³"].ytd2025,
-    "YTD Differenz (m³)":production["Gesamt m³"].difference,
-    "RHP KW (fm)":production.RHP.current,
-    "RHP YTD 2026 (fm)":production.RHP.ytd2026,
-    "RHP YTD 2025 (fm)":production.RHP.ytd2025,
-    "RHP YTD Differenz (fm)":production.RHP.difference,
-    "Trocknung (m³)":refinement.Trocknung.total,
-    "Hobelung (m³)":refinement.Hobelung.total,
-    "Imprägnierung (m³)":refinement.Imprägnierung.total,
+    "Produktion KW (m³)":P("Gesamt m³").current,
+    "Produktion YTD 2026 (m³)":P("Gesamt m³").ytd2026,
+    "Produktion YTD 2025 (m³)":P("Gesamt m³").ytd2025,
+    "YTD Differenz (m³)":P("Gesamt m³").difference,
+    "RHP KW (fm)":P("RHP").current,
+    "RHP YTD 2026 (fm)":P("RHP").ytd2026,
+    "RHP YTD 2025 (fm)":P("RHP").ytd2025,
+    "RHP YTD Differenz (fm)":P("RHP").difference,
+    "Trocknung (m³)":refinement.Trocknung?.total??null,
+    "Hobelung (m³)":refinement.Hobelung?.total??null,
+    "Imprägnierung (m³)":refinement.Imprägnierung?.total??null,
     "A-Eingang getrocknet (m³)":incoming.dried,
     "A-Eingang gehobelt (m³)":incoming.planed,
     "A-Eingang reserviert (m³)":incoming.reserved,
@@ -392,18 +497,18 @@ function parseWeeklyReport(matrix,fileName){
   };
   const ytd={
     "KW":weekLabel,
-    "Produktion fm 2026":production["Gesamt Fm"].ytd2026,
-    "Produktion fm 2025":production["Gesamt Fm"].ytd2025,
-    "Diff. fm":production["Gesamt Fm"].difference,
-    "Diff. %":production["Gesamt Fm"].ytd2025?(production["Gesamt Fm"].ytd2026-production["Gesamt Fm"].ytd2025)/production["Gesamt Fm"].ytd2025:null,
-    "Produktion m³ 2026":production["Gesamt m³"].ytd2026,
-    "Produktion m³ 2025":production["Gesamt m³"].ytd2025,
-    "Diff. m³":production["Gesamt m³"].difference,
-    "Diff. % ":production["Gesamt m³"].ytd2025?(production["Gesamt m³"].ytd2026-production["Gesamt m³"].ytd2025)/production["Gesamt m³"].ytd2025:null,
-    "RHP fm 2026":production.RHP.ytd2026,
-    "RHP fm 2025":production.RHP.ytd2025,
-    "Diff. fm ":production.RHP.difference,
-    "Diff. %  ":production.RHP.ytd2025?(production.RHP.ytd2026-production.RHP.ytd2025)/production.RHP.ytd2025:null
+    "Produktion fm 2026":P("Gesamt Fm").ytd2026,
+    "Produktion fm 2025":P("Gesamt Fm").ytd2025,
+    "Diff. fm":P("Gesamt Fm").difference,
+    "Diff. %":P("Gesamt Fm").ytd2025?(P("Gesamt Fm").ytd2026-P("Gesamt Fm").ytd2025)/P("Gesamt Fm").ytd2025:null,
+    "Produktion m³ 2026":P("Gesamt m³").ytd2026,
+    "Produktion m³ 2025":P("Gesamt m³").ytd2025,
+    "Diff. m³":P("Gesamt m³").difference,
+    "Diff. % ":P("Gesamt m³").ytd2025?(P("Gesamt m³").ytd2026-P("Gesamt m³").ytd2025)/P("Gesamt m³").ytd2025:null,
+    "RHP fm 2026":P("RHP").ytd2026,
+    "RHP fm 2025":P("RHP").ytd2025,
+    "Diff. fm ":P("RHP").difference,
+    "Diff. %  ":P("RHP").ytd2025?(P("RHP").ytd2026-P("RHP").ytd2025)/P("RHP").ytd2025:null
   };
   const orderWindow={
     "KW":weekLabel,"4W berechnet":sum4,"4W gemeldet":reported4,
