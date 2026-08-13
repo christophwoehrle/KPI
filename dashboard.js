@@ -589,9 +589,14 @@ function applyStoredImports(){
   try{
     const stored=JSON.parse(storageGet(IMPORT_STORAGE_KEY)||"{}");
     const bundles=Object.values(stored).filter(Boolean).sort((a,b)=>(a.year||2026)-(b.year||2026)||(a.week||0)-(b.week||0));
-    bundles.forEach(bundle=>mergeAnyImportedBundle(bundle,{persist:false}));
-    const count=bundles.length;
-    if(count)setTimeout(()=>setUploadStatus(`${count} gespeicherte Excel-Importe wurden geladen.`,"success"),0);
+    let ok=0;const failed=[];
+    bundles.forEach(bundle=>{
+      try{mergeAnyImportedBundle(bundle,{persist:false});ok++;}
+      catch(error){failed.push(`${bundle.weekLabel||"KW?"}/${bundle.year||"?"}`);console.warn("Import konnte nicht angewandt werden",bundle&&bundle.fileName,error);}
+    });
+    if(ok||failed.length)setTimeout(()=>setUploadStatus(
+      failed.length?`${ok} gespeicherte Importe geladen; ${failed.length} fehlerhaft (${failed.join(", ")}).`:`${ok} gespeicherte Excel-Importe wurden geladen.`,
+      failed.length?"error":"success"),0);
   }catch(error){
     console.warn("Gespeicherte Importe konnten nicht geladen werden",error);
   }
@@ -777,6 +782,7 @@ async function importExcelFiles(fileList,options={}){
     rebuildSawlineSelectors(importedSawlineWeeks.length?Math.max(...importedSawlineWeeks):null);
     if(importedWeeks.length)setGlobalDisplayWeek(Math.max(...importedWeeks),{showHint:false});
     else updateAll();
+    refreshHistoryControls();   // Historie-Auswahllisten (Jahr/KW/Datensatz) an neue Daten anpassen
     renderKpiWorkspace();
     renderStatisticsBoard();
   }
@@ -4437,6 +4443,30 @@ function renderHistoryArticleChips(ds){
       renderHistory();
     });
   });
+}
+/* Nach einem Upload/Datenwechsel die Historie-Auswahllisten neu aufbauen (ohne Listener doppelt
+   zu binden). Datensatz und Produktauswahl bleiben erhalten; der Zeitraum wird auf die volle
+   Spanne gesetzt, damit neu geladene Jahre/Wochen sofort sichtbar sind. */
+function refreshHistoryControls(){
+  const dsSel=document.getElementById("historyDataset");
+  if(!dsSel)return;
+  historyResetDatasets();
+  const datasets=historyDatasets();
+  if(!datasets.length){renderHistory();return;}
+  const prevDs=dsSel.value;
+  historyFillSelect(dsSel,datasets.map(d=>({value:d.id,label:d.label})),datasets.some(d=>d.id===prevDs)?prevDs:datasets[0].id);
+  const ds=historyDatasetById(dsSel.value);
+  const artZ=new Set(historyArticles(ds).map(a=>a.zeile));
+  const keep=[...historySelected].filter(z=>artZ.has(z));
+  historySelected=new Set(keep.length?keep:historyDefaultSelection(ds));
+  renderHistoryArticleChips(ds);
+  const years=historyYears(ds);
+  historyFillSelect(document.getElementById("historyYearFrom"),years.map(y=>({value:y,label:String(y)})),years[0]);
+  historyFillSelect(document.getElementById("historyYearTo"),years.map(y=>({value:y,label:String(y)})),years[years.length-1]);
+  const weeks=historyWeeks(ds);
+  historyFillSelect(document.getElementById("historyFrom"),weeks.map(w=>({value:w,label:historyKwLabel(w)})),weeks[0]);
+  historyFillSelect(document.getElementById("historyTo"),weeks.map(w=>({value:w,label:historyKwLabel(w)})),weeks[weeks.length-1]);
+  renderHistory();
 }
 function initHistory(){
   const dsSel=document.getElementById("historyDataset");
