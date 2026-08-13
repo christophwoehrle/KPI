@@ -775,7 +775,7 @@ async function importExcelFiles(fileList,options={}){
 
 
 const TAB_ORDER_STORAGE_KEY="kwDashboardTabOrderV2";
-const DEFAULT_TAB_ORDER=["countryPoints","sales","production","sawline","overview","trends","annual","statistics","quality","land","countryCompare","worldmap","details","builder"];
+const DEFAULT_TAB_ORDER=["countryPoints","assistant","sales","production","sawline","overview","trends","annual","statistics","quality","land","countryCompare","worldmap","details","builder"];
 let draggedTabButton=null;
 let suppressNextTabClick=false;
 let touchTabTimer=null;
@@ -1456,6 +1456,178 @@ function processDashboardQuestion(){
     markDashboardQuestionTarget(topic,resolution,country,normalized)
   ));
 }
+/* ---------- Analyse-/Frageseite: Zahlen und Zusammenhänge über alle Dateien ---------- */
+function assistantMetrics(){
+  const wk=key=>()=>DATA.weekly.map(r=>({week:r["KW Nr."],value:n(r[key])})).filter(p=>p.value!==null);
+  const sw=kpi=>()=>DATA.sawlineReports.filter(r=>r.KPI===kpi).map(r=>({week:r["KW Nr."],value:n(r.Summe)})).filter(p=>p.value!==null);
+  return [
+    {id:"umsatzmenge",label:"Umsatzmenge",type:"m3",aliases:["umsatzmenge","umsatz","absatz","verkaufsmenge"],series:wk("Umsatzmenge gesamt (m³)")},
+    {id:"preis",label:"Ø-Preis",type:"price",aliases:["o-preis","preis","durchschnittspreis","verkaufspreis"],series:wk("Ø Preis gesamt (€/m³)")},
+    {id:"db",label:"DB Netto",type:"currency",aliases:["db netto","deckungsbeitrag netto","deckungsbeitrag"],series:wk("DB Netto (€)")},
+    {id:"dbm3",label:"DB je m³",type:"price",aliases:["db je m","db pro m","db/m"],series:wk("DB (€/m³)")},
+    {id:"prodfm",label:"Produktion (fm)",type:"fm",aliases:["produktion fm","produktionsleistung","produktion"],series:wk("Produktion KW gesamt (fm)")},
+    {id:"rhp",label:"RHP",type:"fm",aliases:["rhp"],series:wk("RHP KW (fm)")},
+    {id:"auftragseingang",label:"Auftragseingang",type:"m3",aliases:["auftragseingang","ordereingang","bestellungen"],series:wk("Auftragseingang gesamt (m³)")},
+    {id:"bestand4w",label:"Auftragsbestand 4W",type:"m3",aliases:["auftragsbestand","4-wochenbestand","4 wochenbestand","auftragsbuch"],series:wk("Auftragsbestand 4W (m³)")},
+    {id:"lager",label:"Lagerbestand",type:"m3",aliases:["lagerbestand","lager"],series:wk("Lagerbestand (m³)")},
+    {id:"verladungen",label:"Verladungen",type:"number",aliases:["verladungen","verladung"],series:wk("Verladungen gesamt")},
+    {id:"trocknung",label:"Trocknung",type:"m3",aliases:["trocknung"],series:wk("Trocknung (m³)")},
+    {id:"hobelung",label:"Hobelung",type:"m3",aliases:["hobelung"],series:wk("Hobelung (m³)")},
+    {id:"impraegnierung",label:"Imprägnierung",type:"m3",aliases:["impragnierung","impraegnierung"],series:wk("Imprägnierung (m³)")},
+    {id:"ausbeute",label:"Ausbeute Sägelinie",type:"pctpoint",aliases:["ausbeute"],series:sw("AUSBEUTE (%) Gesamt")},
+    {id:"storzeit",label:"Störzeit Sägelinie",type:"pctpoint",aliases:["storzeit","stoerzeit"],series:sw("STÖRZEIT (%)")},
+    {id:"laufmeter",label:"Laufmeter Sägelinie",type:"lfm",aliases:["laufmeter"],series:sw("LAUFMETER Spaner")},
+    {id:"festmeter",label:"Festmeter Sägelinie",type:"fm",aliases:["festmeter"],series:sw("FESTMETER  Spaner")},
+    {id:"kubikmeter",label:"Kubikmeter Sägelinie",type:"m3",aliases:["kubikmeter"],series:sw("KUBIKMETER  Spaner")},
+    {id:"fmmin",label:"Fm/min Sägelinie",type:"fmmin",aliases:["fm/min","fm pro min"],series:sw("Fm/min (teff) gesamt")}
+  ];
+}
+function assistantMatchMetrics(nq){
+  const found=[];
+  assistantMetrics().forEach(metric=>{
+    let best=-1,len=0;
+    metric.aliases.forEach(a=>{const i=nq.indexOf(a);if(i>=0&&(best<0||i<best)){best=i;len=a.length;}});
+    if(best>=0)found.push({metric,index:best,len});
+  });
+  found.sort((a,b)=>a.index-b.index||b.len-a.len);
+  const seen=new Set(),out=[];
+  found.forEach(f=>{if(!seen.has(f.metric.id)){seen.add(f.metric.id);out.push(f.metric);}});
+  return out;
+}
+const ASSIST_CORR_KEYWORDS=["zusammenhang","zusammenhaeng","korrelation","korreliert","beziehung","verhaltnis","verhaeltnis","abhang","abhaeng","einfluss","beeinfluss","hangt","haengt"," vs ","gegenueber","gleichlaufig","gegenlaufig"];
+function assistantIsCorrelation(nq){return ASSIST_CORR_KEYWORDS.some(k=>nq.includes(k))}
+function assistantPearson(points){
+  const N=points.length;if(N<3)return null;
+  let sx=0,sy=0,sxy=0,sxx=0,syy=0;
+  points.forEach(({x,y})=>{sx+=x;sy+=y;sxy+=x*y;sxx+=x*x;syy+=y*y;});
+  const cov=sxy-sx*sy/N,vx=sxx-sx*sx/N,vy=syy-sy*sy/N,d=Math.sqrt(vx*vy);
+  return d?cov/d:null;
+}
+function assistantCorrText(r){
+  if(r===null)return "nicht bestimmbar (zu wenige gemeinsame Wochen)";
+  const a=Math.abs(r);
+  const strength=a<.2?"praktisch keinen":a<.4?"einen schwachen":a<.6?"einen mittleren":a<.8?"einen starken":"einen sehr starken";
+  return `${strength} ${r>=0?"gleichläufigen (positiven)":"gegenläufigen (negativen)"} Zusammenhang`;
+}
+function assistantCorrelationAnswer(mA,mB){
+  const a=mA.series(),bMap=new Map(mB.series().map(p=>[p.week,p.value]));
+  const pairs=a.filter(p=>bMap.has(p.week)).map(p=>({week:p.week,x:p.value,y:bMap.get(p.week)})).sort((u,v)=>u.week-v.week);
+  const r=assistantPearson(pairs.map(p=>({x:p.x,y:p.y})));
+  const dir=r===null?"":(r>=0?`Wenn ${mA.label} steigt, tendiert ${mB.label} ebenfalls nach oben.`:`Wenn ${mA.label} steigt, tendiert ${mB.label} nach unten.`);
+  const html=`<strong>Zusammenhang ${esc(mA.label)} ↔ ${esc(mB.label)}</strong><br>`+
+    (pairs.length<3?`Nur ${pairs.length} gemeinsame Wochen – für eine belastbare Korrelation zu wenig.`:
+    `Korrelationskoeffizient <strong>r = ${fmt2.format(r)}</strong> über ${pairs.length} gemeinsame Wochen: ${assistantCorrText(r)}.<br>${dir}`);
+  return {html,kind:"correlation",
+    chart:{kind:"scatter",pairs,xLabel:`${mA.label}`,yLabel:`${mB.label}`,xtype:mA.type,ytype:mB.type},
+    tableRows:pairs.map(p=>({"KW":"KW"+String(p.week).padStart(2,"0"),[mA.label]:p.x,[mB.label]:p.y})),
+    tableCols:[["KW","text"],[mA.label,mA.type],[mB.label,mB.type]]};
+}
+function scatterChart(id,pairs,opt={}){
+  const host=document.getElementById(id);if(!host)return;host.innerHTML="";
+  if(!pairs||pairs.length<2){host.innerHTML='<div class="empty">Zu wenige gemeinsame Wochen für ein Streudiagramm.</div>';return;}
+  const W=900,H=340,m={l:70,r:22,t:20,b:54},pw=W-m.l-m.r,ph=H-m.t-m.b;
+  const xs=pairs.map(p=>p.x),ys=pairs.map(p=>p.y);
+  let xmin=Math.min(...xs),xmax=Math.max(...xs),ymin=Math.min(...ys),ymax=Math.max(...ys);
+  if(xmin===xmax){xmin-=1;xmax+=1;}if(ymin===ymax){ymin-=1;ymax+=1;}
+  xmin-=(xmax-xmin)*.06;xmax+=(xmax-xmin)*.06;ymin-=(ymax-ymin)*.08;ymax+=(ymax-ymin)*.08;
+  const X=v=>m.l+(v-xmin)/(xmax-xmin)*pw,Y=v=>m.t+(ymax-v)/(ymax-ymin)*ph;
+  const svg=svgEl("svg",{viewBox:`0 0 ${W} ${H}`});
+  for(let i=0;i<=4;i++){
+    const gy=m.t+i*ph/4,val=ymax-i*(ymax-ymin)/4;
+    svg.append(svgEl("line",{x1:m.l,y1:gy,x2:W-m.r,y2:gy,stroke:"#e5ebf1"}));
+    svg.append(svgEl("text",{x:m.l-8,y:gy+4,"text-anchor":"end",fill:"#718096","font-size":11},fmtNum.format(val)));
+  }
+  for(let i=0;i<=4;i++){
+    const gx=m.l+i*pw/4,val=xmin+i*(xmax-xmin)/4;
+    svg.append(svgEl("text",{x:gx,y:H-22,"text-anchor":"middle",fill:"#718096","font-size":11},fmtNum.format(val)));
+  }
+  const N=pairs.length,mx=xs.reduce((a,b)=>a+b,0)/N,my=ys.reduce((a,b)=>a+b,0)/N;
+  let num=0,den=0;pairs.forEach(p=>{num+=(p.x-mx)*(p.y-my);den+=(p.x-mx)**2;});
+  const slope=den?num/den:0,intercept=my-slope*mx;
+  svg.append(svgEl("line",{x1:X(xmin),y1:Y(intercept+slope*xmin),x2:X(xmax),y2:Y(intercept+slope*xmax),stroke:"#a27a4f","stroke-width":2,"stroke-dasharray":"6 5"}));
+  pairs.forEach(p=>{
+    const c=svgEl("circle",{cx:X(p.x),cy:Y(p.y),r:5,fill:"#76b737",stroke:"#fff","stroke-width":1.5,tabindex:0});
+    c.addEventListener("mousemove",e=>showTip(e,`KW${String(p.week).padStart(2,"0")}<br>${esc(opt.xLabel||"X")}: ${fmtNum.format(p.x)}<br>${esc(opt.yLabel||"Y")}: ${fmtNum.format(p.y)}`));
+    c.addEventListener("mouseleave",hideTip);svg.append(c);
+  });
+  svg.append(svgEl("text",{x:m.l+pw/2,y:H-4,"text-anchor":"middle",fill:"#3c4a37","font-size":12,"font-weight":700},opt.xLabel||""));
+  host.append(svg);
+  const legend=document.createElement("div");legend.className="legend";
+  legend.innerHTML=`<div class="legend-item"><span class="legend-swatch" style="background:#76b737"></span>${esc(opt.yLabel||"Y")} über ${esc(opt.xLabel||"X")}</div>`+
+    `<div class="legend-item"><span class="legend-swatch" style="background:#a27a4f"></span>Trendlinie (lineare Regression)</div>`;
+  host.append(legend);
+}
+function answerAssistant(raw){
+  const nq=normalizeDashboardQuestion(raw);
+  if(assistantIsCorrelation(nq)){
+    const ms=assistantMatchMetrics(nq);
+    if(ms.length>=2)return assistantCorrelationAnswer(ms[0],ms[1]);
+    return {html:"Für einen Zusammenhang bitte zwei Kennzahlen nennen, z. B. „Zusammenhang zwischen Ø-Preis und Umsatzmenge“ oder „Ausbeute vs Störzeit“.",kind:"info",warn:true};
+  }
+  const country=detectQuestionCountry(nq);
+  if(extractQuestionWeek(raw)===null&&isAggregateQuestion(nq)){
+    const agg=buildAggregateAnswer(nq,country);
+    if(agg)return {html:agg.html,kind:"aggregate"};
+  }
+  const topic=detectDashboardQuestionTopic(nq,country);
+  const resolution=resolveQuestionWeek(extractQuestionWeek(raw),topic.kind);
+  if(resolution.selected!==null){
+    return {html:topic.answer(resolution,nq,country),kind:"lookup"};
+  }
+  return {html:"Dazu liegen keine Werte vor. Formuliere die Frage mit einem Begriff wie Umsatz, Produktion, Auftragsbestand, Sägelinie, Störzeit, Land oder als Zusammenhang zweier Kennzahlen.",kind:"info",warn:true};
+}
+let assistantHistory=[];
+const ASSIST_HISTORY_KEY="kwDashboardAssistantHistoryV1";
+function loadAssistantHistory(){try{const s=JSON.parse(storageGet(ASSIST_HISTORY_KEY)||"[]");if(Array.isArray(s))assistantHistory=s.slice(0,20);}catch(e){}}
+function saveAssistantHistory(){storageSet(ASSIST_HISTORY_KEY,JSON.stringify(assistantHistory.slice(0,20)));}
+function assistantExamplesList(){
+  return [
+    "Wie viel Störzeit ist auf der Sägelinie im Jahr aufgelaufen?",
+    "Umsatz im Jahr",
+    "Zusammenhang zwischen Ausbeute und Störzeit",
+    "Zusammenhang zwischen Ø-Preis und Umsatzmenge",
+    "Frankreich Umsatz gesamt",
+    "Auftragsbestand KW28"
+  ];
+}
+function renderAssistantHistory(){
+  if(!document.getElementById("assistantHistoryBox"))return;
+  assistantHistoryBox.innerHTML=assistantHistory.length
+    ?`<div class="assistant-history-title">Zuletzt gefragt</div>`+assistantHistory.slice(0,12).map(q=>`<button type="button" class="assistant-hist" data-q="${esc(q)}">${esc(q)}</button>`).join("")
+    :"";
+  assistantHistoryBox.querySelectorAll(".assistant-hist").forEach(btn=>btn.addEventListener("click",()=>{assistantInput.value=btn.dataset.q;runAssistant(btn.dataset.q);}));
+}
+function renderAssistantStatic(){
+  if(!document.getElementById("assistantExamples"))return;
+  assistantScope.textContent=`${availableDashboardWeeks().length} Wochenberichte · ${availableSawlineWeeks().length} Sägelinien-Wochen`;
+  assistantExamples.innerHTML=assistantExamplesList().map(q=>`<button type="button" class="assistant-example" data-q="${esc(q)}">${esc(q)}</button>`).join("");
+  assistantExamples.querySelectorAll(".assistant-example").forEach(btn=>btn.addEventListener("click",()=>{assistantInput.value=btn.dataset.q;runAssistant(btn.dataset.q);}));
+  renderAssistantHistory();
+}
+function runAssistant(raw){
+  if(!document.getElementById("assistantResult"))return;
+  const q=String(raw||"").trim();
+  if(!q){assistantResult.innerHTML='<div class="assistant-card"><div class="assistant-a warn">Bitte eine Frage eingeben.</div></div>';return;}
+  const res=answerAssistant(q);
+  assistantHistory=[q,...assistantHistory.filter(item=>item!==q)].slice(0,20);
+  saveAssistantHistory();
+  let html=`<div class="assistant-card"><div class="assistant-q">Frage: ${esc(q)}</div><div class="assistant-a${res.warn?" warn":""}">${res.html}</div>`;
+  if(res.chart)html+=`<div class="assistant-chart"><div class="chart" id="assistantChart"></div></div>`;
+  if(res.tableRows&&res.tableRows.length)html+=`<div class="table-wrap"><table id="assistantTable"></table></div>`;
+  html+=`</div>`;
+  assistantResult.innerHTML=html;
+  if(res.chart&&res.chart.kind==="scatter")scatterChart("assistantChart",res.chart.pairs,{xLabel:res.chart.xLabel,yLabel:res.chart.yLabel});
+  if(res.tableRows&&res.tableRows.length)renderTable("assistantTable",res.tableRows,res.tableCols);
+  renderAssistantHistory();
+}
+function initAssistant(){
+  if(!document.getElementById("assistantInput"))return;
+  loadAssistantHistory();
+  assistantBtn.addEventListener("click",()=>runAssistant(assistantInput.value));
+  assistantInput.addEventListener("keydown",event=>{if(event.key==="Enter"){event.preventDefault();runAssistant(assistantInput.value);}});
+  renderAssistantStatic();
+}
+
 function initControls(){
   loadTabOrder();
   bindTabSorting();
@@ -1631,6 +1803,7 @@ function initControls(){
     importExcelFiles(event.dataTransfer?.files,{expectedKind:"auto",source:"Drag-and-drop"});
   });
   initCountryPoints();
+  initAssistant();
   initWorldMap();
   initKpiBuilder(availableAllKpiWeeks());
   setGlobalDisplayWeek(Math.max(...weeks),{showHint:false});
@@ -4005,6 +4178,7 @@ function renderAnnual(){
 }
 function updateAll(){
   renderCountryPoints();
+  if(typeof renderAssistantStatic==="function"&&document.getElementById("assistantExamples"))renderAssistantStatic();
   renderSales();renderProduction();renderSawline();renderKpis();renderOverviewCharts();renderTrends();renderAnnual();renderStatisticsBoard();renderQuality();
   renderLand();renderCountryComparison();renderWorldMap();renderDetails();
   renderKpiWorkspace();

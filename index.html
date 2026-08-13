@@ -1362,6 +1362,53 @@ body.monitor-mode .nav button[data-action="monitor"]{
 }
 
 
+/* Analyse-/Frageseite */
+.assistant-ask{
+  display:flex;align-items:flex-end;gap:12px;background:#eef3ea;
+  border-left:6px solid var(--streit-green);padding:14px;margin-bottom:12px
+}
+.assistant-ask .dashboard-question-icon{margin-bottom:1px}
+.assistant-ask-field{flex:1;min-width:220px}
+.assistant-ask-field label{
+  display:block;margin-bottom:5px;color:var(--forest);font-size:10px;font-weight:850;
+  text-transform:uppercase;letter-spacing:.06em
+}
+.assistant-ask-field input{
+  width:100%;min-height:42px;padding:9px 12px;border:1px solid #c8d2c1!important;border-radius:2px;
+  background:#fff!important;color:var(--forest)!important;-webkit-text-fill-color:var(--forest);
+  outline:none;font-size:14px
+}
+.assistant-ask-field input:focus{border-color:var(--streit-green)!important;box-shadow:0 0 0 3px rgba(118,183,55,.18)}
+.assistant-ask .dashboard-question-btn{min-height:42px}
+.assistant-examples{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:14px}
+.assistant-example{
+  border:1px solid #c8d2c1;background:#fff;color:var(--forest);padding:7px 11px;border-radius:2px;
+  cursor:pointer;font-size:11px;font-weight:700
+}
+.assistant-example:hover{border-color:var(--streit-green);background:#f2f7ec}
+.assistant-result{margin-bottom:14px}
+.assistant-card{
+  background:#fff;border:1px solid #d7ddd2;border-top:4px solid var(--streit-green);
+  border-radius:var(--radius);box-shadow:var(--shadow);padding:16px 18px
+}
+.assistant-q{
+  color:var(--moss);font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px
+}
+.assistant-a{color:var(--forest);font-size:15px;line-height:1.55}
+.assistant-a.warn{color:#6d531d}
+.assistant-chart{margin-top:14px}
+.assistant-card table{min-width:520px;margin-top:12px}
+.assistant-history{display:flex;flex-wrap:wrap;gap:7px;align-items:center}
+.assistant-history-title{
+  width:100%;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px
+}
+.assistant-hist{
+  border:1px dashed #c8d2c1;background:#f7faf4;color:var(--moss);padding:6px 10px;border-radius:2px;
+  cursor:pointer;font-size:11px
+}
+.assistant-hist:hover{border-color:var(--streit-green);color:var(--forest)}
+@media(max-width:620px){.assistant-ask{flex-wrap:wrap}.assistant-ask-field{min-width:100%}.assistant-ask .dashboard-question-btn{width:100%}}
+
 /* Reiterleiste umbrechen, damit kein Tab (z. B. Weltkarte) verdeckt wird */
 .nav{flex-wrap:wrap;overflow-x:visible;row-gap:2px}
 @media(max-width:780px){.nav{flex-wrap:nowrap;overflow-x:auto}}
@@ -1438,6 +1485,7 @@ body.monitor-mode .nav button[data-action="monitor"]{
     </div>
     <nav class="nav" id="nav">
       <button class="active" data-view="countryPoints">Länderdaten</button>
+      <button data-view="assistant">Fragen & Analyse</button>
       <button data-view="sales">Umsatz</button>
       <button data-view="production">Produktion</button>
       <button data-view="sawline"><span class="saw-nav-icon" aria-hidden="true"></span>Sägelinie</button>
@@ -1587,6 +1635,27 @@ body.monitor-mode .nav button[data-action="monitor"]{
       <div class="card-sub" id="cpTableSub">Zeilen: Länder · Spalten: ausgewählte Datenpunkte. Farbintensität je Spalte nach Wert.</div>
       <div class="table-wrap"><table class="cp-table" id="cpTable"></table></div>
     </div>
+  </section>
+
+  <section class="view" id="assistant">
+    <div class="section-head">
+      <div>
+        <h2>Fragen &amp; Zusammenhänge</h2>
+        <p>Frei formulierte, themenbezogene Fragen zu den hochgeladenen Statistiken. Zahlen werden über alle geladenen Dateien ausgewertet, Zusammenhänge als Korrelation mit Streudiagramm dargestellt.</p>
+      </div>
+      <span class="chip" id="assistantScope"></span>
+    </div>
+    <div class="assistant-ask">
+      <div class="dashboard-question-icon" aria-hidden="true">?</div>
+      <div class="assistant-ask-field">
+        <label for="assistantInput">Frage oder Zusammenhang</label>
+        <input id="assistantInput" type="search" autocomplete="off" placeholder="z. B. Zusammenhang zwischen Ausbeute und Störzeit">
+      </div>
+      <button class="btn dashboard-question-btn" id="assistantBtn" type="button">Auswerten</button>
+    </div>
+    <div class="assistant-examples" id="assistantExamples"></div>
+    <div class="assistant-result" id="assistantResult"></div>
+    <div class="assistant-history" id="assistantHistoryBox"></div>
   </section>
 
   <section class="view" id="sales">
