@@ -3439,6 +3439,7 @@ function catalogGroups(){
   return [...new Set(kpiCatalog().map(entry=>entry.group))];
 }
 function defaultKpiLayout(){
+  if(!DATA.weekly.length)return [];
   const latest=DATA.weekly[DATA.weekly.length-1]["KW Nr."];
   const defs=[
     ["Umsatzmenge gesamt (m³)",20,20,330,235],
@@ -4632,6 +4633,11 @@ function updateAll(){
   renderLand();renderCountryComparison();renderWorldMap();renderDetails();renderHistory();
   renderKpiWorkspace();
   applyClosableStandardWindows();
+  const hint=document.getElementById("emptyDataHint");
+  if(hint){
+    const hasData=(DATA.weekly&&DATA.weekly.length)||(DATA.sawlineReports&&DATA.sawlineReports.length)||(DATA.salesBreakdown&&DATA.salesBreakdown.length);
+    hint.hidden=!!hasData;
+  }
 }
 loadClosedStandardWindows();historyInitStores();applyStoredImports();initControls();updateAll();
 window.addEventListener("resize",()=>{clearTimeout(window.__rt);window.__rt=setTimeout(updateAll,120)});

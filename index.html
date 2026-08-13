@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>KW-Dashboard 2026 · KW18–KW28</title>
+<title>Sägewerk Streit KW-Dashboard</title>
 <style>
 :root{
   --navy:#17365d; --blue:#2f75b5; --blue2:#4e91c9; --ice:#eef5fb;
@@ -1450,6 +1450,8 @@ body.monitor-mode .nav button[data-action="monitor"]{
 
 /* PDF-/Druckausgabe: nur die aktive Ansicht, sauber umbrochen */
 .print-header{display:none}
+.empty-data-hint{margin:0 0 16px;padding:16px 18px;border:1px solid var(--line);border-left:4px solid var(--streit-green);background:#f6f9f2;border-radius:8px;color:var(--forest);font-size:14px;line-height:1.5}
+.empty-data-hint code{background:#eaf0e2;padding:1px 5px;border-radius:3px;font-size:12px}
 @media print{
   @page{size:A4 landscape;margin:12mm}
   html,body{background:#fff!important}
@@ -1515,7 +1517,7 @@ body.monitor-mode .nav button[data-action="monitor"]{
           </div>
         </div>
         <div class="brand-copy">
-          <h1>Wochen- &amp; YTD-Dashboard 2026</h1>
+          <h1>Wochen- &amp; YTD-Dashboard</h1>
           <p>Naturerlebnis Holz · Leistung, Auftrag, Länder, Veredelung und Datenqualität</p>
         </div>
       </div>
@@ -1666,6 +1668,10 @@ body.monitor-mode .nav button[data-action="monitor"]{
 
 <main>
   <div class="print-header" id="printHeader" aria-hidden="true"></div>
+  <div class="empty-data-hint" id="emptyDataHint" hidden>
+    <strong>Noch keine Daten geladen.</strong>
+    Bitte lade oben rechts Wochenberichte (<code>KW-XX-20XX.xlsx</code>) und/oder Sägelinien-Protokolle (<code>Sh_XX_YY.xlsx</code>) hoch. Es werden ausschließlich die hochgeladenen Dateien angezeigt.
+  </div>
   <section class="view active" id="countryPoints">
     <div class="section-head">
       <div>
@@ -2237,7 +2243,7 @@ body.monitor-mode .nav button[data-action="monitor"]{
     <div class="workspace-shell"><div class="kpi-workspace" id="kpiWorkspace"></div></div>
   </section>
 
-  <div class="footer">Datenquelle: Wochenberichte KW18–KW28 2026 · HTML-Dashboard aus der geprüften Arbeitsmappe</div>
+  <div class="footer">Datenquelle: hochgeladene Wochenberichte (KW-XX-20XX.xlsx) und Sägelinien-Protokolle (Sh_XX_YY.xlsx)</div>
 </main>
 <div class="tab-order-toast" id="tabOrderToast" aria-live="polite"></div>
 <div class="week-scroll-hint" id="weekScrollHint" aria-live="polite"></div>
