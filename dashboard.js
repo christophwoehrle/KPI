@@ -1308,6 +1308,111 @@ function showDashboardQuestionResult(message,type="success"){
   dashboardQuestionResult.className=`dashboard-question-result visible${type==="success"?"":` ${type}`}`;
   dashboardQuestionResult.innerHTML=message;
 }
+const QUESTION_AGG_KEYWORDS=["jahr","gesamt","insgesamt","summe","summiert","aufgelaufen","aufgelaufene","total","kumuliert","alle wochen","ueber alle","ganze jahr","gesamtes jahr"];
+const QUESTION_AVG_KEYWORDS=["durchschnitt","schnitt","mittel","average","je woche","pro woche"];
+function isAggregateQuestion(nq){
+  return QUESTION_AGG_KEYWORDS.some(k=>nq.includes(k))||QUESTION_AVG_KEYWORDS.some(k=>nq.includes(k));
+}
+function wantsAverage(nq){return QUESTION_AVG_KEYWORDS.some(k=>nq.includes(k))&&!QUESTION_AGG_KEYWORDS.some(k=>nq.includes(k))}
+function sumSawlineByZeile(zeile){return DATA.sawlineReports.filter(r=>r.Zeile===zeile).reduce((s,r)=>s+(n(r.Summe)||0),0)}
+function sawlineSummeValues(kpi){return DATA.sawlineReports.filter(r=>r.KPI===kpi).map(r=>n(r.Summe)).filter(v=>v!==null)}
+function resolveSawlineKpiName(fragment){
+  if(!fragment)return null;
+  const nf=normalizeDashboardQuestion(fragment);
+  return [...new Set(DATA.sawlineReports.map(r=>r.KPI))].find(kpi=>normalizeDashboardQuestion(kpi).includes(nf))||null;
+}
+function aggregateSawlineAnswer(nq){
+  const weeks=availableSawlineWeeks();
+  if(!weeks.length)return {view:"sawline",target:"#sawlineTable",html:"<strong>Sägelinie:</strong> Es sind noch keine Sägelinien-Dateien (Sh_XX_YY.xlsx) geladen."};
+  const wk=weeks.length,span=`KW${String(Math.min(...weeks)).padStart(2,"0")}–KW${String(Math.max(...weeks)).padStart(2,"0")}`;
+  if(nq.includes("storzeit")||nq.includes("stoerzeit")){
+    const prod=sumSawlineByZeile(19),saw=sumSawlineByZeile(20),stoer=Math.max(0,prod-saw);
+    const pctVals=sawlineSummeValues("STÖRZEIT (%)");
+    const avgPct=pctVals.length?pctVals.reduce((s,v)=>s+v,0)/pctVals.length:null;
+    return {view:"sawline",target:"#sawlineTable",html:
+      `<strong>Störzeit Sägelinie · Jahr (${wk} geladene Wochen, ${span}):</strong><br>`+
+      `Aufgelaufene Störzeit ≈ <strong>${fmt0.format(stoer)} min</strong> (≈ ${fmtNum.format(stoer/60)} h).<br>`+
+      `Herleitung über alle Dateien: Σ Produktionszeit ${fmt0.format(prod)} min − Σ effektive Sägezeit ${fmt0.format(saw)} min.<br>`+
+      `Ø Störzeitquote über alle Wochen: ${avgPct===null?"–":fmt2.format(avgPct)+" %"}.`};
+  }
+  let kpi=resolveSawlineKpiName(questionSawlineMetric(nq));
+  if(!kpi&&(nq.includes("sagezeit")||nq.includes("saegezeit")))kpi="effektive SÄGEZEIT gesamt";
+  if(!kpi&&nq.includes("produktionszeit"))kpi="PRODUKTIONSZEIT gesamt";
+  if(kpi){
+    const sample=DATA.sawlineReports.find(r=>r.KPI===kpi),type=sample?.Werttyp,vals=sawlineSummeValues(kpi);
+    const additive=SAWLINE_ADDITIVE_TYPES.has(type);
+    if(additive&&!wantsAverage(nq)){
+      const total=vals.reduce((s,v)=>s+v,0),avg=vals.length?total/vals.length:null;
+      return {view:"sawline",target:"#sawlineTable",html:
+        `<strong>${esc(kpi)} · Jahr (${wk} Wochen, ${span}):</strong> Σ über alle Dateien = <strong>${format(total,type)}</strong>. Ø je Woche: ${format(avg,type)}.`};
+    }
+    const avg=vals.length?vals.reduce((s,v)=>s+v,0)/vals.length:null;
+    return {view:"sawline",target:"#sawlineTable",html:
+      `<strong>${esc(kpi)} · Jahr (${wk} Wochen, ${span}):</strong> Ø der Wochenwerte = <strong>${format(avg,type)}</strong>${additive?"":" · Quoten/Raten werden gemittelt, nicht summiert"}.`};
+  }
+  return null;
+}
+function aggregateCountryAnswer(nq,country){
+  if(!country)return null;
+  const weeks=availableDashboardWeeks();
+  let vol=0,rev=0,cnt=0;
+  weeks.forEach(week=>{
+    const weekly=DATA.weekly.find(r=>r["KW Nr."]===week);
+    const total=n(weekly?.["Umsatzmenge gesamt (m³)"]),wprice=n(weekly?.["Ø Preis gesamt (€/m³)"]);
+    const row=(DATA.countryComparison||[]).find(r=>r["KW Nr."]===week&&r.Land===country);
+    const mp=n(row?.["M%"]);if(total===null||mp===null)return;
+    const v=total*mp/100;vol+=v;cnt++;const price=n(row?.["Ø-Preis Gesamt"])??wprice??null;if(price!==null)rev+=v*price;
+  });
+  if(!cnt)return {view:"countryPoints",target:"#cpTable",html:`<strong>${esc(country)}:</strong> keine Länderdaten geladen.`};
+  return {view:"countryPoints",target:"#cpTable",html:
+    `<strong>${esc(country)} · Jahr (${cnt} Wochen):</strong> hergeleiteter Umsatz Σ ≈ <strong>${format(rev,"currency")}</strong>, Menge Σ ${format(vol,"m3")}, Ø-Preis ${format(vol?rev/vol:null,"price")}.`};
+}
+function aggregateWeeklyAnswer(nq){
+  const weeks=availableDashboardWeeks();if(!weeks.length)return null;
+  const wk=weeks.length,range=`${wk} Wochen, KW${String(Math.min(...weeks)).padStart(2,"0")}–KW${String(Math.max(...weeks)).padStart(2,"0")}`;
+  const w=DATA.weekly,S=key=>w.reduce((s,r)=>s+(n(r[key])||0),0);
+  if(nq.includes("verladung"))
+    return {view:"annual",target:"#annualKpis",html:`<strong>Verladungen · Jahr (${range}):</strong> Σ = <strong>${fmt0.format(S("Verladungen gesamt"))}</strong> Verladungen.`};
+  if(nq.includes("trocknung")||nq.includes("hobelung")||nq.includes("impragnierung")||nq.includes("impraegnierung")||nq.includes("veredelung"))
+    return {view:"annual",target:"#annualRefineChart",html:`<strong>Veredelung · Jahr (${range}):</strong> Trocknung Σ ${format(S("Trocknung (m³)"),"m3")}, Hobelung Σ ${format(S("Hobelung (m³)"),"m3")}, Imprägnierung Σ ${format(S("Imprägnierung (m³)"),"m3")}.`};
+  if(nq.includes("auftragseingang"))
+    return {view:"annual",target:"#annualKpis",html:`<strong>Auftragseingang · Jahr (${range}):</strong> Σ = <strong>${format(S("Auftragseingang gesamt (m³)"),"m3")}</strong>.`};
+  if(nq.includes("rhp"))
+    return {view:"annual",target:"#annualKpis",html:`<strong>RHP · Jahr (${range}):</strong> Σ Wochenleistung = <strong>${format(S("RHP KW (fm)"),"fm")}</strong>.`};
+  if(nq.includes("produktion"))
+    return {view:"annual",target:"#annualKpis",html:`<strong>Produktion · Jahr (${range}):</strong> Σ = <strong>${format(S("Produktion KW gesamt (fm)"),"fm")}</strong> bzw. ${format(S("Produktion KW (m³)"),"m3")}.`};
+  if(nq.includes("deckungsbeitrag")||/\bdb\b/.test(nq)){
+    const menge=S("Umsatzmenge gesamt (m³)"),db=S("DB Netto (€)");
+    return {view:"annual",target:"#annualKpis",html:`<strong>Deckungsbeitrag · Jahr (${range}):</strong> Σ DB Netto = <strong>${format(db,"currency")}</strong> · gewichtet ${format(menge?db/menge:null,"price")}.`};
+  }
+  if(nq.includes("umsatz")||nq.includes("erlos")||nq.includes("erloes")||nq.includes("umsatzmenge")||nq.includes("preis")){
+    const menge=S("Umsatzmenge gesamt (m³)");
+    const erlos=w.reduce((s,r)=>s+((n(r["Umsatzmenge gesamt (m³)"])||0)*(n(r["Ø Preis gesamt (€/m³)"])||0)),0);
+    return {view:"annual",target:"#annualKpis",html:`<strong>Umsatz · Jahr (${range}):</strong> Menge Σ = <strong>${format(menge,"m3")}</strong> · Erlös (rechnerisch) ${format(erlos,"currency")} · Ø-Preis ${format(menge?erlos/menge:null,"price")}.`};
+  }
+  return null;
+}
+function buildAggregateAnswer(nq,country){
+  const sawlineHint=["sagelinie","saegelinie","spaner","storzeit","stoerzeit","ausbeute","laufmeter","stuckzahl","stueckzahl","festmeter","kubikmeter","sagezeit","saegezeit","produktionszeit","fm/min","m3/min"].some(k=>nq.includes(k));
+  if(sawlineHint){const a=aggregateSawlineAnswer(nq);if(a)return a;}
+  if(country){const c=aggregateCountryAnswer(nq,country);if(c)return c;}
+  const weekly=aggregateWeeklyAnswer(nq);if(weekly)return weekly;
+  if(sawlineHint)return aggregateSawlineAnswer(nq);
+  return null;
+}
+function markAggregateTarget(agg){
+  clearDashboardQuestionMarks();
+  const tabButton=nav.querySelector(`button[data-view="${agg.view}"]`);
+  tabButton?.classList.add("question-tab-target");
+  const rawTarget=document.querySelector(agg.target);
+  const target=rawTarget?.closest?.(".card,.kpi,.detail-kpi,.sawline-kpi-card,.quality-card")||rawTarget||document.getElementById(agg.view);
+  if(!target)return;
+  revealDashboardQuestionTarget(target);
+  target.classList.add("question-target-highlight");
+  const badge=document.createElement("div");badge.className="question-marker-badge";badge.textContent="Antwort zur Frage";
+  target.appendChild(badge);
+  setTimeout(()=>target.scrollIntoView({behavior:"smooth",block:"center"}),80);
+}
 function processDashboardQuestion(){
   const raw=dashboardQuestionInput.value.trim();
   if(!raw){
@@ -1319,6 +1424,18 @@ function processDashboardQuestion(){
   const normalized=normalizeDashboardQuestion(raw);
   const requestedWeek=extractQuestionWeek(raw);
   const country=detectQuestionCountry(normalized);
+
+  if(requestedWeek===null&&isAggregateQuestion(normalized)){
+    const aggregate=buildAggregateAnswer(normalized,country);
+    if(aggregate){
+      const aggTab=nav.querySelector(`button[data-view="${aggregate.view}"]`);
+      activateDashboardTab(aggTab);
+      showDashboardQuestionResult(aggregate.html,"success");
+      requestAnimationFrame(()=>requestAnimationFrame(()=>markAggregateTarget(aggregate)));
+      return;
+    }
+  }
+
   const topic=detectDashboardQuestionTopic(normalized,country);
   const resolution=resolveQuestionWeek(requestedWeek,topic.kind);
 
