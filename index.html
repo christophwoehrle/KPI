@@ -879,6 +879,11 @@ body.monitor-mode .nav button[data-action="monitor"]{
 .statistics-builder-toolbar .control{min-width:130px}
 .statistics-builder-metric{min-width:290px!important;flex:1}
 .statistics-builder-toolbar select{max-width:390px}
+.stat-free-row{display:flex;gap:5px}
+.stat-free-row select{min-width:74px;max-width:120px}
+.statistics-builder-toolbar .stat-free-window[hidden]{display:none}
+.statistics-module-controls .stat-mod-free{display:flex;gap:4px;flex:1;min-width:0}
+.statistics-module-controls .stat-mod-free select{min-width:0;flex:1}
 .statistics-workspace-shell{
   position:relative;overflow:auto;min-height:760px;border:1px solid #ccd6c6;
   background:#e9eee5;box-shadow:var(--shadow)
@@ -1969,11 +1974,18 @@ body.monitor-mode .nav button[data-action="monitor"]{
           <option value="13">3 Monate</option>
           <option value="26">6 Monate</option>
           <option value="yoy">Vorjahr</option>
+          <option value="free">Freies Fenster (Jahr/KW)</option>
         </select>
       </div>
-      <div class="control">
+      <div class="control" data-stat-endweek>
         <label>Bis KW</label>
         <select id="statisticsBuilderWeek"></select>
+      </div>
+      <div class="control stat-free-window" data-stat-free hidden><label>Von</label>
+        <div class="stat-free-row"><select id="statFromYear"></select><select id="statFromWeek"></select></div>
+      </div>
+      <div class="control stat-free-window" data-stat-free hidden><label>Bis</label>
+        <div class="stat-free-row"><select id="statToYear"></select><select id="statToWeek"></select></div>
       </div>
       <button class="btn" id="addStatisticsModuleBtn" type="button">Statistikmodul hinzufügen</button>
       <button class="btn secondary" id="addStatisticsGroupBtn" type="button">Gruppe komplett hinzufügen</button>

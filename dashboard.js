@@ -2433,6 +2433,7 @@ function statisticsPeriodLabel(period){
   if(String(period)==="4")return "4 Wochen";
   if(String(period)==="13")return "3 Monate";
   if(String(period)==="26")return "6 Monate";
+  if(String(period)==="free")return "Freies Fenster";
   return "Vorjahresvergleich";
 }
 function statisticsAverage(values){
@@ -2473,6 +2474,54 @@ function statisticsSeries(def,endWeek,period){
   return def.series().filter(point=>Number.isFinite(point.week)&&point.week<=endWeek&&point.value!==null)
     .sort((a,b)=>a.week-b.week).slice(-limit);
 }
+/* Freies Zeitfenster über alle geladenen Jahre (Von Jahr/KW – Bis Jahr/KW). */
+function statisticsWeeklyHistorySource(){
+  return (DATA.weeklyHistory&&DATA.weeklyHistory.length)?DATA.weeklyHistory:(DATA.weekly||[]);
+}
+function statisticsFreeYears(){
+  const dy=historyDashboardYear();
+  const ys=[...new Set(statisticsWeeklyHistorySource().map(r=>historyRowYear(r,dy)))].sort((a,b)=>a-b);
+  return ys.length?ys:[dy];
+}
+function statisticsFreeWeeksForYear(year){
+  const dy=historyDashboardYear();
+  return [...new Set(statisticsWeeklyHistorySource().filter(r=>historyRowYear(r,dy)===Number(year)).map(r=>r["KW Nr."]).filter(Number.isFinite))].sort((a,b)=>a-b);
+}
+function statisticsFreeSeries(def,fromY,fromKW,toY,toKW){
+  if(!def)return [];
+  const key=def.id,dy=historyDashboardYear(),src=statisticsWeeklyHistorySource();
+  if(!src.some(r=>typeof r[key]==="number"))return [];   // freies Fenster nur für Wochenkennzahlen
+  const ordF=Number(fromY)*100+Number(fromKW),ordT=Number(toY)*100+Number(toKW);
+  return src.map(r=>({year:historyRowYear(r,dy),week:r["KW Nr."],value:n(r[key])}))
+    .filter(p=>p.value!==null&&Number.isFinite(p.week)&&(p.year*100+p.week)>=ordF&&(p.year*100+p.week)<=ordT)
+    .sort((a,b)=>(a.year-b.year)||(a.week-b.week));
+}
+function statisticsFreeWindowOf(item){
+  const years=statisticsFreeYears();
+  const y0=years[0],y1=years[years.length-1];
+  const wFrom=statisticsFreeWeeksForYear(item?.fromYear??y0);
+  const wTo=statisticsFreeWeeksForYear(item?.toYear??y1);
+  return {
+    fromYear:Number(item?.fromYear??y0),
+    fromWeek:Number(item?.fromWeek??(wFrom[0]??1)),
+    toYear:Number(item?.toYear??y1),
+    toWeek:Number(item?.toWeek??(wTo[wTo.length-1]??1))
+  };
+}
+function statisticsFreeSummary(def,item){
+  const w=statisticsFreeWindowOf(item);
+  const series=statisticsFreeSeries(def,w.fromYear,w.fromWeek,w.toYear,w.toWeek);
+  const values=series.map(p=>p.value);
+  const latest=series.at(-1)?.value??null,first=series[0]?.value??null;
+  const avg=statisticsAverage(values),min=values.length?Math.min(...values):null,max=values.length?Math.max(...values):null;
+  const change=latest!==null&&first!==null?latest-first:null;
+  const changePct=first?change/Math.abs(first):null;
+  const deviation=statisticsStdDev(values);
+  return {series,latest,avg,min,max,change,changePct,deviation,window:w};
+}
+function statisticsFreeWindowLabel(w){
+  return `KW${String(w.fromWeek).padStart(2,"0")}/${w.fromYear} – KW${String(w.toWeek).padStart(2,"0")}/${w.toYear}`;
+}
 function defaultStatisticsLayout(){
   const latest=Math.max(...availableDashboardWeeks());
   const defs=[
@@ -2506,16 +2555,41 @@ function refreshStatisticsBuilderMetrics(preferredMetric=null){
   statisticsBuilderMetric.innerHTML=definitions.map(def=>`<option value="${esc(def.id)}">${esc(def.label)}</option>`).join("");
   if(definitions.some(def=>def.id===preferred))statisticsBuilderMetric.value=preferred;
 }
-function addStatisticsModules(definitions,period,endWeek){
+function addStatisticsModules(definitions,period,endWeek,freeWin){
   const start=statisticsModules.length;
   definitions.forEach((def,index)=>{
     const absolute=start+index;
-    statisticsModules.push({
+    const mod={
       id:`stat-${Date.now()}-${index}`,metric:def.id,period:String(period),endWeek:Number(endWeek),
       x:20+(absolute%2)*520,y:20+Math.floor(absolute/2)*395,w:500,h:370,z:++statisticsTopZ
-    });
+    };
+    if(String(period)==="free"&&freeWin){mod.fromYear=freeWin.fromYear;mod.fromWeek=freeWin.fromWeek;mod.toYear=freeWin.toYear;mod.toWeek=freeWin.toWeek;}
+    statisticsModules.push(mod);
   });
   saveStatisticsLayout();renderStatisticsBoard();
+}
+function readStatFreeToolbar(){
+  const g=id=>Number((document.getElementById(id)||{}).value);
+  const win={fromYear:g("statFromYear"),fromWeek:g("statFromWeek"),toYear:g("statToYear"),toWeek:g("statToWeek")};
+  const ordF=win.fromYear*100+win.fromWeek,ordT=win.toYear*100+win.toWeek;
+  if(ordF>ordT){win.toYear=win.fromYear;win.toWeek=win.fromWeek;}
+  return win;
+}
+function refreshStatFreeToolbar(){
+  const years=statisticsFreeYears();
+  const fill=(id,items,val)=>{const sel=document.getElementById(id);if(!sel)return;sel.innerHTML=items.map(it=>`<option value="${it.v}">${it.l}</option>`).join("");if(val!==undefined&&items.some(it=>String(it.v)===String(val)))sel.value=String(val);};
+  fill("statFromYear",years.map(y=>({v:y,l:String(y)})),years[0]);
+  fill("statToYear",years.map(y=>({v:y,l:String(y)})),years[years.length-1]);
+  const wf=statisticsFreeWeeksForYear(document.getElementById("statFromYear")?document.getElementById("statFromYear").value:years[0]);
+  const wt=statisticsFreeWeeksForYear(document.getElementById("statToYear")?document.getElementById("statToYear").value:years[years.length-1]);
+  fill("statFromWeek",wf.map(w=>({v:w,l:"KW"+w})),wf[0]);
+  fill("statToWeek",wt.map(w=>({v:w,l:"KW"+w})),wt[wt.length-1]);
+}
+function toggleStatFreeControls(){
+  const free=(document.getElementById("statisticsBuilderPeriod")||{}).value==="free";
+  document.querySelectorAll("[data-stat-free]").forEach(el=>el.hidden=!free);
+  document.querySelectorAll("[data-stat-endweek]").forEach(el=>el.hidden=free);
+  if(free)refreshStatFreeToolbar();
 }
 function initStatisticsBoard(weeks){
   const groups=statisticsGroups();
@@ -2528,15 +2602,31 @@ function initStatisticsBoard(weeks){
   statisticsBuilderWeek.value=String(Math.max(...weeks));
   loadStatisticsLayout();
 
+  refreshStatFreeToolbar();
+  toggleStatFreeControls();
+  statisticsBuilderPeriod.addEventListener("change",toggleStatFreeControls);
+  ["statFromYear","statToYear"].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el)el.addEventListener("change",()=>{
+      const target=id==="statFromYear"?"statFromWeek":"statToWeek";
+      const wk=statisticsFreeWeeksForYear(el.value);
+      const sel=document.getElementById(target);
+      if(sel)sel.innerHTML=wk.map(w=>`<option value="${w}">KW${w}</option>`).join("");
+    });
+  });
+
   addStatisticsModuleBtn.addEventListener("click",()=>{
     const def=resolveKpiDefinition(statisticsBuilderMetric.value);
-    if(def)addStatisticsModules([def],statisticsBuilderPeriod.value,statisticsBuilderWeek.value);
+    if(!def)return;
+    const free=statisticsBuilderPeriod.value==="free";
+    addStatisticsModules([def],statisticsBuilderPeriod.value,statisticsBuilderWeek.value,free?readStatFreeToolbar():null);
   });
   addStatisticsGroupBtn.addEventListener("click",()=>{
     const definitions=statisticsDefinitions().filter(def=>def.group===statisticsBuilderGroup.value);
     if(!definitions.length)return;
     if(definitions.length>20&&!confirm(`${definitions.length} Statistikmodule aus „${statisticsBuilderGroup.value}“ hinzufügen?`))return;
-    addStatisticsModules(definitions,statisticsBuilderPeriod.value,statisticsBuilderWeek.value);
+    const free=statisticsBuilderPeriod.value==="free";
+    addStatisticsModules(definitions,statisticsBuilderPeriod.value,statisticsBuilderWeek.value,free?readStatFreeToolbar():null);
     autoArrangeStatisticsModules();
   });
   autoLayoutStatisticsBtn.addEventListener("click",autoArrangeStatisticsModules);
@@ -2561,15 +2651,48 @@ function statisticsRegularSummary(def,item){
   const deviation=statisticsStdDev(values);
   return {series,latest,avg,min,max,change,changePct,deviation,requested};
 }
+function statisticsWindowControlMarkup(item,weeks){
+  if(String(item.period)!=="free"){
+    return `<select data-statistics-role="week" aria-label="End-KW auswählen">${weeks.map(week=>`<option value="${week}" ${Number(item.endWeek)===week?"selected":""}>KW${week}</option>`).join("")}</select>`;
+  }
+  const w=statisticsFreeWindowOf(item);
+  const years=statisticsFreeYears();
+  const yOpts=sel=>years.map(y=>`<option value="${y}" ${Number(sel)===y?"selected":""}>${y}</option>`).join("");
+  const wOpts=(yr,sel)=>statisticsFreeWeeksForYear(yr).map(wk=>`<option value="${wk}" ${Number(sel)===wk?"selected":""}>KW${wk}</option>`).join("");
+  return `<div class="stat-mod-free">
+    <select data-statistics-role="fromYear" title="Von Jahr">${yOpts(w.fromYear)}</select>
+    <select data-statistics-role="fromWeek" title="Von KW">${wOpts(w.fromYear,w.fromWeek)}</select>
+    <span aria-hidden="true">–</span>
+    <select data-statistics-role="toYear" title="Bis Jahr">${yOpts(w.toYear)}</select>
+    <select data-statistics-role="toWeek" title="Bis KW">${wOpts(w.toYear,w.toWeek)}</select>
+  </div>`;
+}
 function statisticsModuleMarkup(item){
   const def=resolveKpiDefinition(item.metric)||statisticsDefinitions()[0];
   const title=def?.label||item.metric;
   const weeks=availableDashboardWeeks();
   const metricOptions=statisticsMetricOptions(item.metric);
-  const periodOptions=[["4","4 Wochen"],["13","3 Monate"],["26","6 Monate"],["yoy","Vorjahr"]];
+  const periodOptions=[["4","4 Wochen"],["13","3 Monate"],["26","6 Monate"],["yoy","Vorjahr"],["free","Freies Fenster"]];
   let body="";
   if(!def){
     body='<div class="statistics-module-warning">Die gespeicherte Kennzahl ist in den aktuellen Daten nicht mehr verfügbar.</div>';
+  }else if(String(item.period)==="free"){
+    const w=statisticsFreeWindowOf(item);
+    const stats=statisticsFreeSummary(def,item);
+    const wl=statisticsFreeWindowLabel(w);
+    if(!stats.series.length){
+      body=`<div class="statistics-module-warning">Für das gewählte Fenster (${esc(wl)}) liegen keine Wochenwerte dieser Kennzahl vor. Das freie Fenster gilt für Kennzahlen aus dem Wochenbericht.</div>
+        <div class="statistics-module-chart"><div class="chart" id="stat-chart-${esc(item.id)}"></div></div>`;
+    }else{
+      body=`<div class="statistics-module-summary">
+        <div class="statistics-module-stat"><small>Aktuell</small><strong>${format(stats.latest,def.type)}</strong></div>
+        <div class="statistics-module-stat"><small>Ø</small><strong>${format(stats.avg,def.type)}</strong></div>
+        <div class="statistics-module-stat"><small>Veränderung</small><strong>${stats.change===null?"–":`${stats.change>=0?"+":""}${format(stats.change,def.type)}`}</strong></div>
+        <div class="statistics-module-stat"><small>Veränderung %</small><strong>${statisticsPercentText(stats.changePct)}</strong></div>
+      </div>
+      <div class="statistics-module-note">${esc(wl)} · ${stats.series.length} Wochen · Min ${format(stats.min,def.type)} · Max ${format(stats.max,def.type)} · σ ${format(stats.deviation,def.type)}</div>
+      <div class="statistics-module-chart"><div class="chart" id="stat-chart-${esc(item.id)}"></div></div>`;
+    }
   }else if(String(item.period)==="yoy"){
     const pair=statisticsYearPair(def);
     if(!pair){
@@ -2617,7 +2740,7 @@ function statisticsModuleMarkup(item){
     <div class="statistics-module-controls">
       <select data-statistics-role="metric" aria-label="Kennzahl auswählen">${metricOptions}</select>
       <select data-statistics-role="period" aria-label="Zeitraum auswählen">${periodOptions.map(([value,label])=>`<option value="${value}" ${String(item.period)===value?"selected":""}>${label}</option>`).join("")}</select>
-      <select data-statistics-role="week" aria-label="End-KW auswählen">${weeks.map(week=>`<option value="${week}" ${Number(item.endWeek)===week?"selected":""}>KW${week}</option>`).join("")}</select>
+      ${statisticsWindowControlMarkup(item,weeks)}
     </div>
     <div class="statistics-module-body">${body}</div>
     <div class="statistics-module-resize" data-statistics-resize title="Modulgröße ändern"></div>
@@ -2627,6 +2750,18 @@ function renderStatisticsModuleChart(item){
   const def=resolveKpiDefinition(item.metric);
   const target=`stat-chart-${item.id}`;
   if(!def||!document.getElementById(target))return;
+  if(String(item.period)==="free"){
+    const stats=statisticsFreeSummary(def,item);
+    if(!stats.series.length){lineChart(target,[],[]);return;}
+    const y0=stats.series[0].year;
+    const multiYear=stats.series.some(p=>p.year!==y0);
+    const labels=stats.series.map(p=>multiYear?`KW${p.week}·${String(p.year).slice(2)}`:`KW${p.week}`);
+    lineChart(target,labels,[
+      {name:def.label,values:stats.series.map(p=>p.value),format:value=>format(value,def.type)},
+      {name:"Fenster-Ø",values:stats.series.map(()=>stats.avg),format:value=>format(value,def.type)}
+    ],{zero:false,tick:value=>fmtNum.format(value)});
+    return;
+  }
   if(String(item.period)==="yoy"){
     const pair=statisticsYearPair(def);
     if(pair){
@@ -2668,10 +2803,25 @@ function bindStatisticsModule(element){
     item.metric=event.target.value;saveStatisticsLayout();renderStatisticsBoard();
   });
   element.querySelector('[data-statistics-role="period"]').addEventListener("change",event=>{
-    item.period=event.target.value;saveStatisticsLayout();renderStatisticsBoard();
+    item.period=event.target.value;
+    if(item.period==="free"&&item.fromYear===undefined)Object.assign(item,statisticsFreeWindowOf(item));
+    saveStatisticsLayout();renderStatisticsBoard();
   });
-  element.querySelector('[data-statistics-role="week"]').addEventListener("change",event=>{
+  const weekSel=element.querySelector('[data-statistics-role="week"]');
+  if(weekSel)weekSel.addEventListener("change",event=>{
     item.endWeek=Number(event.target.value);saveStatisticsLayout();renderStatisticsBoard();
+  });
+  ["fromYear","fromWeek","toYear","toWeek"].forEach(role=>{
+    const el=element.querySelector(`[data-statistics-role="${role}"]`);
+    if(!el)return;
+    el.addEventListener("change",event=>{
+      item[role]=Number(event.target.value);
+      if(role==="fromYear"){const wk=statisticsFreeWeeksForYear(item.fromYear);if(!wk.includes(Number(item.fromWeek)))item.fromWeek=wk[0]??item.fromWeek;}
+      if(role==="toYear"){const wk=statisticsFreeWeeksForYear(item.toYear);if(!wk.includes(Number(item.toWeek)))item.toWeek=wk[wk.length-1]??item.toWeek;}
+      const ordF=Number(item.fromYear)*100+Number(item.fromWeek),ordT=Number(item.toYear)*100+Number(item.toWeek);
+      if(ordF>ordT){ if(role.startsWith("from")){item.toYear=item.fromYear;item.toWeek=item.fromWeek;} else {item.fromYear=item.toYear;item.fromWeek=item.toWeek;} }
+      saveStatisticsLayout();renderStatisticsBoard();
+    });
   });
   const head=element.querySelector("[data-statistics-drag]");
   head.addEventListener("pointerdown",event=>{
@@ -2728,6 +2878,7 @@ function refreshStatisticsAfterDataChange(){
   statisticsBuilderGroup.innerHTML=groups.map(group=>`<option value="${esc(group)}">${esc(group)}</option>`).join("");
   statisticsBuilderGroup.value=groups.includes(currentGroup)?currentGroup:(groups[0]||"");
   refreshStatisticsBuilderMetrics();
+  if(typeof toggleStatFreeControls==="function")toggleStatFreeControls();
   renderStatisticsBoard();
 }
 function renderTrends(){
