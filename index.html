@@ -1409,6 +1409,13 @@ body.monitor-mode .nav button[data-action="monitor"]{
 .assistant-hist:hover{border-color:var(--streit-green);color:var(--forest)}
 @media(max-width:620px){.assistant-ask{flex-wrap:wrap}.assistant-ask-field{min-width:100%}.assistant-ask .dashboard-question-btn{width:100%}}
 
+/* Historie */
+.history-controls{display:flex;flex-wrap:wrap;gap:14px;margin:4px 0 18px}
+.history-controls .control{min-width:150px}
+.history-controls select{width:100%}
+.history-controls #historyDataset,.history-controls #historyArticle{min-width:220px}
+@media(max-width:620px){.history-controls .control{flex:1 1 100%}}
+
 /* Reiterleiste umbrechen, damit kein Tab (z. B. Weltkarte) verdeckt wird */
 .nav{flex-wrap:wrap;overflow-x:visible;row-gap:2px}
 @media(max-width:780px){.nav{flex-wrap:nowrap;overflow-x:auto}}
@@ -1486,6 +1493,7 @@ body.monitor-mode .nav button[data-action="monitor"]{
     <nav class="nav" id="nav">
       <button class="active" data-view="countryPoints">Länderdaten</button>
       <button data-view="assistant">Fragen & Analyse</button>
+      <button data-view="history">Historie</button>
       <button data-view="sales">Umsatz</button>
       <button data-view="production">Produktion</button>
       <button data-view="sawline"><span class="saw-nav-icon" aria-hidden="true"></span>Sägelinie</button>
@@ -1656,6 +1664,36 @@ body.monitor-mode .nav button[data-action="monitor"]{
     <div class="assistant-examples" id="assistantExamples"></div>
     <div class="assistant-result" id="assistantResult"></div>
     <div class="assistant-history" id="assistantHistoryBox"></div>
+  </section>
+
+  <section class="view" id="history">
+    <div class="section-head">
+      <div>
+        <h2>Historie</h2>
+        <p>Historische Werte aus den hochgeladenen Excel-Dateien auf einem Zeitstrahl. Beispiel: Durchschnittspreis Hauptware Säge – Artikel (Zeile 3–12), Preis aus Spalte D. Jahr über Dateiname-Suffix (_2025 / _2026).</p>
+      </div>
+      <span class="chip" id="historyScope"></span>
+    </div>
+    <div class="history-controls">
+      <div class="control local-control"><label>Datensatz</label><select id="historyDataset"></select></div>
+      <div class="control local-control"><label>Jahr</label><select id="historyYear"></select></div>
+      <div class="control local-control"><label>Artikel (Zeile)</label><select id="historyArticle"></select></div>
+      <div class="control local-control"><label>KW von</label><select id="historyFrom"></select></div>
+      <div class="control local-control"><label>KW bis</label><select id="historyTo"></select></div>
+    </div>
+    <div class="kpi-grid" id="historyKpis"></div>
+    <div class="card">
+      <div class="card-title-row">
+        <div><h3 id="historyChartTitle">Zeitstrahl</h3><div class="card-sub" id="historyChartSub"></div></div>
+        <span class="chip" id="historyTrendChip"></span>
+      </div>
+      <div class="chart" id="historyChart"></div>
+    </div>
+    <div class="card">
+      <h3>Werte je Kalenderwoche</h3>
+      <div class="card-sub" id="historyTableSub"></div>
+      <div class="table-wrap"><table id="historyTable"></table></div>
+    </div>
   </section>
 
   <section class="view" id="sales">
@@ -2150,6 +2188,7 @@ body.monitor-mode .nav button[data-action="monitor"]{
 <script src="dashboard-sales.js"></script>
 <script src="dashboard-country.js"></script>
 <script src="dashboard-sawline.js"></script>
+<script src="dashboard-history.js"></script>
 <script src="dashboard-data.js"></script>
 <script src="dashboard.js"></script>
 </body>

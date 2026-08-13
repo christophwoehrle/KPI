@@ -6,3 +6,4 @@ DATA.salesBreakdown = (typeof SALES_BREAKDOWN !== "undefined") ? SALES_BREAKDOWN
 DATA.productionCurrent = (typeof PRODUCTION_CURRENT !== "undefined") ? PRODUCTION_CURRENT : [];
 DATA.countryComparison = (typeof COUNTRY_COMPARISON !== "undefined") ? COUNTRY_COMPARISON : [];
 DATA.sawlineReports = (typeof SAWLINE_REPORTS !== "undefined") ? SAWLINE_REPORTS : [];
+DATA.priceHistory = (typeof PRICE_HISTORY !== "undefined") ? PRICE_HISTORY : [];
