@@ -1727,7 +1727,7 @@ body.monitor-mode .nav button[data-action="monitor"]{
     <div class="section-head">
       <div>
         <h2>Historie</h2>
-        <p>Historische Werte aus den hochgeladenen Excel-Dateien auf einem Zeitstrahl. Beispiel: Durchschnittspreis Hauptware Säge – Artikel (Zeile 3–12), Preis aus Spalte D. Jahr über Dateiname-Suffix (_2025 / _2026).</p>
+        <p>Ø-Preis je Produkt aus der Umsatzuntergliederung der hochgeladenen Wochenberichte (Spalte „EUR (€/m³)"), auf einem Zeitstrahl. Es werden ausschließlich die eingelesenen Werte angezeigt – keine erzeugten oder umbenannten Daten.</p>
       </div>
       <span class="chip" id="historyScope"></span>
     </div>
@@ -1739,7 +1739,7 @@ body.monitor-mode .nav button[data-action="monitor"]{
       <div class="control local-control"><label>KW bis</label><select id="historyTo"></select></div>
     </div>
     <div class="history-articles-head">
-      <label>Produkte (Zeile 3–12) – mehrere gemeinsam auf dem gleichen Zeitstrahl</label>
+      <label>Produkte – mehrere gemeinsam auf dem gleichen Zeitstrahl</label>
       <div class="history-articles-actions">
         <button type="button" class="mini-btn" id="historyAll">Alle</button>
         <button type="button" class="mini-btn" id="historyNone">Keine</button>
@@ -2247,7 +2247,6 @@ body.monitor-mode .nav button[data-action="monitor"]{
 <script src="dashboard-sales.js"></script>
 <script src="dashboard-country.js"></script>
 <script src="dashboard-sawline.js"></script>
-<script src="dashboard-history.js"></script>
 <script src="dashboard-data.js"></script>
 <script src="dashboard.js"></script>
 </body>

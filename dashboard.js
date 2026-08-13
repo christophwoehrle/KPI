@@ -4240,18 +4240,40 @@ function renderAnnual(){
     </tr>`).join("")}</tbody>`;
 }
 /* ============================= Historie (Zeitstrahl) ============================= */
-/* Registry historischer Datensätze. Erweiterbar; primär: Durchschnittspreis Hauptware Säge
-   (Artikel = Zeile 3–12, Preis aus Spalte D, Mehrjahres-Ablage über Dateiname _JJJJ). */
+/* Liest ausschließlich echte Werte aus den hochgeladenen Wochenberichten:
+   Umsatzuntergliederung (DATA.salesBreakdown), Ø-Preis je Produkt = Spalte "EUR (€/m³)".
+   Es werden keine Werte erzeugt oder übersetzt – die Produktnamen bleiben wortgleich. */
+function historyDerivedYear(row){
+  // Jahr aus der Zeile ableiten, falls vorhanden; sonst aus dem geladenen Wochenbericht (2026).
+  if(row&&row.Jahr!==undefined&&row.Jahr!==null&&row.Jahr!=="")return Number(row.Jahr);
+  return 2026;
+}
+function salesHistoryRows(){
+  if(!Array.isArray(DATA.salesBreakdown)||!DATA.salesBreakdown.length)return [];
+  // Reihenfolge der Produkte aus dem tatsächlichen Auftreten; Zeile 3–12 wie im Ursprungsblatt.
+  const order=[];
+  DATA.salesBreakdown.forEach(r=>{ if(!order.includes(r.Kategorie))order.push(r.Kategorie); });
+  return DATA.salesBreakdown.map(r=>({
+    Jahr:historyDerivedYear(r),
+    KW:r.KW,
+    "KW Nr.":r["KW Nr."],
+    Zeile:3+order.indexOf(r.Kategorie),
+    Artikel:r.Kategorie,
+    "EUR (€/m³)":r["EUR (€/m³)"],
+    Quelldatei:`KW-${String(r["KW Nr."]).padStart(2,"0")}-${historyDerivedYear(r)}.xlsx`
+  }));
+}
 function historyDatasets(){
   const list=[];
-  if(Array.isArray(DATA.priceHistory)&&DATA.priceHistory.length){
+  const rows=salesHistoryRows();
+  if(rows.length){
     list.push({
-      id:"preisHauptwareSaege",
-      label:"Durchschnittspreis Hauptware Säge",
+      id:"preisProdukt",
+      label:"Ø-Preis je Produkt (Umsatzuntergliederung)",
       unit:"€/m³",
       type:"price",
-      valueKey:"Preis (€/m³)",
-      rows:DATA.priceHistory
+      valueKey:"EUR (€/m³)",
+      rows
     });
   }
   return list;
@@ -4301,10 +4323,10 @@ function historyColorForZeile(ds,zeile){
 }
 function historyDefaultSelection(ds){
   const arts=historyArticles(ds);
-  // Beispielprodukte des Nutzers bevorzugen
-  const wanted=["bretter","contreventement","voliges","latten"];
+  // Beispielprodukte des Nutzers bevorzugen (echte Kategorienamen)
+  const wanted=["hauptware säge","davon bretter","davon contreventement","davon voliges","latten"];
   const picked=arts.filter(a=>wanted.some(w=>a.name.toLowerCase().includes(w))).map(a=>a.zeile);
-  return picked.length?picked:arts.slice(0,Math.min(4,arts.length)).map(a=>a.zeile);
+  return picked.length?picked:arts.slice(0,Math.min(5,arts.length)).map(a=>a.zeile);
 }
 function renderHistoryArticleChips(ds){
   const host=document.getElementById("historyArticles");
