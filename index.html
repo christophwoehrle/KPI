@@ -1466,12 +1466,17 @@ body.monitor-mode .nav button[data-action="monitor"]{
   .card,.kpi,.detail-kpi,.sawline-kpi-card,.history-stack .card,table{break-inside:avoid;page-break-inside:avoid}
   .grid-2{grid-template-columns:1fr 1fr!important}
   .chart{height:300px!important}
-  .history-stack .chart{height:220px!important}
   .card,.kpi{box-shadow:none!important}
   .local-control,.history-controls,.controls,.filterbar{display:none!important}
   .cp-points,.hist-points,.history-articles-head{display:none!important}
   .sp-actions,.window-controls,.sp-close{display:none!important}
   a[href]:after{content:""!important}
+  /* Historie: jedes Schaubild ergibt ein eigenes Blatt */
+  #history #historyKpis{page-break-after:always;break-after:page}
+  #history .history-stack>.card{page-break-after:always;break-after:page;break-inside:avoid;page-break-inside:avoid}
+  #history .history-stack>.card:last-child{page-break-after:auto;break-after:auto}
+  #history .history-stack .chart{height:150mm!important}
+  #history #historyTable{page-break-before:always;break-before:page}
 }
 
 /* Länderdaten-Punktauswahl */

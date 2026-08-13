@@ -3870,8 +3870,9 @@ function exportDashboardPdf(){
   document.title=`Streit_Dashboard_${viewName.replace(/[^\wäöüÄÖÜß-]+/g,"_")}_${kw}_${year}`;
   const restore=()=>{document.title=previousTitle;window.removeEventListener("afterprint",restore);};
   window.addEventListener("afterprint",restore);
+  if(typeof setUploadStatus==="function")setUploadStatus("PDF-Export: Es öffnet sich der Druckdialog – dort als Ziel »Als PDF speichern« wählen. Erscheint kein Dialog (eingebettete Ansicht), die Seite in einem eigenen Browser-Tab öffnen und Strg/Cmd+P nutzen.","working");
   // Charts sind bereits gerendert; kurz warten, damit Layout-Reflow greift, dann drucken.
-  setTimeout(()=>{ try{window.print();}catch(e){ /* Druckdialog nicht verfügbar */ } },60);
+  setTimeout(()=>{ try{window.print();}catch(e){ if(typeof setUploadStatus==="function")setUploadStatus("Druckdialog in dieser Ansicht nicht verfügbar. Bitte die Seite in einem eigenen Browser-Tab öffnen und Strg/Cmd+P → »Als PDF speichern« verwenden.","error"); } },60);
 }
 
 const CLOSED_STANDARD_WINDOWS_KEY="kwDashboardClosedStandardWindowsV1";
