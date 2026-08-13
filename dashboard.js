@@ -4240,61 +4240,106 @@ function renderAnnual(){
     </tr>`).join("")}</tbody>`;
 }
 /* ============================= Historie (Zeitstrahl) ============================= */
-/* Liest ausschließlich echte Werte aus den hochgeladenen Wochenberichten:
-   Umsatzuntergliederung (DATA.salesBreakdown), Ø-Preis je Produkt = Spalte "EUR (€/m³)".
-   Es werden keine Werte erzeugt oder übersetzt – die Produktnamen bleiben wortgleich. */
-function historyDerivedYear(row){
-  // Jahr aus der Zeile ableiten, falls vorhanden; sonst aus dem geladenen Wochenbericht (2026).
-  if(row&&row.Jahr!==undefined&&row.Jahr!==null&&row.Jahr!=="")return Number(row.Jahr);
-  return 2026;
+/* Die Historie greift auf dieselben Daten wie das übrige Dashboard zu – alle hochgeladenen
+   Excel-Dateien. Für jede Quelle wird ein Datensatz gebildet; ausgewählte Kennzahlen/Produkte
+   werden je Kalenderwoche über einen Zeitraum dargestellt. Es werden ausschließlich die
+   eingelesenen Werte verwendet – nichts wird erzeugt oder übersetzt. */
+function historyYearFromFile(name,fallback){
+  const m=String(name||"").match(/(20\d{2})/);
+  return m?Number(m[1]):fallback;
 }
-function salesHistoryRows(){
-  if(!Array.isArray(DATA.salesBreakdown)||!DATA.salesBreakdown.length)return [];
-  // Reihenfolge der Produkte aus dem tatsächlichen Auftreten; Zeile 3–12 wie im Ursprungsblatt.
-  const order=[];
-  DATA.salesBreakdown.forEach(r=>{ if(!order.includes(r.Kategorie))order.push(r.Kategorie); });
-  return DATA.salesBreakdown.map(r=>({
-    Jahr:historyDerivedYear(r),
-    KW:r.KW,
-    "KW Nr.":r["KW Nr."],
-    Zeile:3+order.indexOf(r.Kategorie),
-    Artikel:r.Kategorie,
-    "EUR (€/m³)":r["EUR (€/m³)"],
-    Quelldatei:`KW-${String(r["KW Nr."]).padStart(2,"0")}-${historyDerivedYear(r)}.xlsx`
-  }));
+function historyDashboardYear(){
+  // Jahr des geladenen Wochenberichts (aus Quelldatei), Fallback 2026.
+  const wk=(DATA.weekly&&DATA.weekly[0])||null;
+  return wk?historyYearFromFile(wk.Quelldatei,2026):2026;
 }
-function historyDatasets(){
-  const list=[];
-  const rows=salesHistoryRows();
-  if(rows.length){
-    list.push({
-      id:"preisProdukt",
-      label:"Ø-Preis je Produkt (Umsatzuntergliederung)",
-      unit:"€/m³",
-      type:"price",
-      valueKey:"EUR (€/m³)",
-      rows
+/* Baut aus normalisierten Datensätzen {zeile,name,unit,type,year,kw,value} ein Historie-Dataset. */
+function historyBuildDataset(id,label,records,defUnit,defType){
+  if(!records.length)return null;
+  const artMap=new Map(),vmap=new Map(),years=new Set(),weeksByYear={};
+  records.forEach(r=>{
+    if(!artMap.has(r.zeile))artMap.set(r.zeile,{zeile:r.zeile,name:r.name,unit:r.unit||defUnit,type:r.type||defType});
+    vmap.set(r.zeile+"|"+r.year+"|"+r.kw,r.value);
+    years.add(r.year);
+    (weeksByYear[r.year]=weeksByYear[r.year]||new Set()).add(r.kw);
+  });
+  const byYear={};Object.entries(weeksByYear).forEach(([y,s])=>byYear[y]=[...s].sort((a,b)=>a-b));
+  return {
+    id,label,unit:defUnit,type:defType,
+    articles:[...artMap.values()].sort((a,b)=>a.zeile-b.zeile),
+    years:[...years].sort((a,b)=>a-b),
+    weeksByYear:byYear,
+    valueAt:(zeile,year,kw)=>{const v=vmap.get(zeile+"|"+year+"|"+kw);return v===undefined?null:n(v);}
+  };
+}
+function historyUnitTypeForWeeklyKey(key){
+  const k=key.toLowerCase();
+  if(/€\/m³|\(€\/m³\)/.test(key))return{unit:"€/m³",type:"price"};
+  if(/\(€\)/.test(key))return{unit:"€",type:"currency"};
+  if(/\(m³\)/.test(key))return{unit:"m³",type:"m3"};
+  if(/\(fm\)/.test(key))return{unit:"fm",type:"fm"};
+  if(/quote/.test(k))return{unit:"%",type:"percent"};
+  return{unit:"",type:"number"};
+}
+function historyBuildAllDatasets(){
+  const list=[],dy=historyDashboardYear();
+  // 1./2. Umsatzuntergliederung: Ø-Preis (€/m³) und Menge (m³) je Produkt
+  if(Array.isArray(DATA.salesBreakdown)&&DATA.salesBreakdown.length){
+    const cats=[];DATA.salesBreakdown.forEach(r=>{if(!cats.includes(r.Kategorie))cats.push(r.Kategorie);});
+    const zeileOf=cat=>3+cats.indexOf(cat);
+    const priceRecs=DATA.salesBreakdown.map(r=>({zeile:zeileOf(r.Kategorie),name:r.Kategorie,unit:"€/m³",type:"price",year:dy,kw:r["KW Nr."],value:r["EUR (€/m³)"]}));
+    const mengeRecs=DATA.salesBreakdown.map(r=>({zeile:zeileOf(r.Kategorie),name:r.Kategorie,unit:"m³",type:"m3",year:dy,kw:r["KW Nr."],value:r["Menge (m³)"]}));
+    const dPrice=historyBuildDataset("umsatzPreis","Umsatz · Ø-Preis je Produkt (€/m³)",priceRecs,"€/m³","price");
+    const dMenge=historyBuildDataset("umsatzMenge","Umsatz · Menge je Produkt (m³)",mengeRecs,"m³","m3");
+    if(dPrice)list.push(dPrice);
+    if(dMenge)list.push(dMenge);
+  }
+  // 3. Wochenkennzahlen (Wochenbericht) – alle numerischen Spalten als Kennzahlen
+  if(Array.isArray(DATA.weekly)&&DATA.weekly.length){
+    const skip=new Set(["KW","KW Nr.","Quelldatei"]);
+    const keys=Object.keys(DATA.weekly[0]).filter(k=>!skip.has(k)&&DATA.weekly.some(r=>typeof r[k]==="number"));
+    const recs=[];
+    keys.forEach((key,idx)=>{
+      const ut=historyUnitTypeForWeeklyKey(key);
+      DATA.weekly.forEach(r=>{
+        recs.push({zeile:idx,name:key,unit:ut.unit,type:ut.type,year:historyYearFromFile(r.Quelldatei,dy),kw:r["KW Nr."],value:r[key]});
+      });
     });
+    const d=historyBuildDataset("wochenKennzahlen","Wochenkennzahlen (Wochenbericht)",recs,"","number");
+    if(d)list.push(d);
+  }
+  // 4. Sägelinie (Wochenprotokolle) – Wochensumme je Kennzahl
+  if(Array.isArray(DATA.sawlineReports)&&DATA.sawlineReports.length){
+    const order=[];
+    DATA.sawlineReports.forEach(r=>{if(!order.some(o=>o.kpi===r.KPI))order.push({kpi:r.KPI,zeile:r.Zeile,typ:r.Werttyp});});
+    const recs=DATA.sawlineReports.map(r=>({zeile:r.Zeile,name:r.KPI,unit:r.Einheit||"",type:r.Werttyp||"number",year:Number(r.Jahr)||dy,kw:r["KW Nr."],value:r.Summe}));
+    const d=historyBuildDataset("saegelinie","Sägelinie (Wochenprotokolle)",recs,"","number");
+    if(d)list.push(d);
   }
   return list;
+}
+let _historyDatasetsCache=null;
+function historyResetDatasets(){_historyDatasetsCache=null;}
+function historyDatasets(){
+  if(!_historyDatasetsCache)_historyDatasetsCache=historyBuildAllDatasets();
+  return _historyDatasetsCache;
 }
 function historyDatasetById(id){
   const all=historyDatasets();
   return all.find(d=>d.id===id)||all[0]||null;
 }
 function historyArticles(ds){
-  const seen=new Map();
-  ds.rows.forEach(r=>{ if(!seen.has(r.Zeile)) seen.set(r.Zeile,r.Artikel); });
-  return [...seen.entries()].map(([zeile,name])=>({zeile,name})).sort((a,b)=>a.zeile-b.zeile);
+  return ds.articles.map(a=>({zeile:a.zeile,name:a.name,unit:a.unit,type:a.type}));
 }
-function historyYears(ds){
-  return [...new Set(ds.rows.map(r=>r.Jahr))].sort((a,b)=>a-b);
+function historyArticleMeta(ds,zeile){
+  return ds.articles.find(a=>a.zeile===zeile)||{zeile,name:"",unit:ds.unit,type:ds.type};
 }
+function historyYears(ds){return ds.years.slice();}
 function historyWeeks(ds){
-  return [...new Set(ds.rows.map(r=>r["KW Nr."]))].sort((a,b)=>a-b);
+  return [...new Set(Object.values(ds.weeksByYear).flat())].sort((a,b)=>a-b);
 }
 function historyWeeksForYear(ds,year){
-  return [...new Set(ds.rows.filter(r=>r.Jahr===year).map(r=>r["KW Nr."]))].sort((a,b)=>a-b);
+  return (ds.weeksByYear[year]||[]).slice();
 }
 /* Fortlaufende Perioden von (Jahr von, KW von) bis (Jahr bis, KW bis) über Jahresgrenzen. */
 function historyPeriods(ds,yFrom,kwFrom,yTo,kwTo){
@@ -4353,6 +4398,7 @@ function renderHistoryArticleChips(ds){
 function initHistory(){
   const dsSel=document.getElementById("historyDataset");
   if(!dsSel)return;
+  historyResetDatasets();
   const datasets=historyDatasets();
   historyFillSelect(dsSel,datasets.map(d=>({value:d.id,label:d.label})));
   const ds=datasets[0];
@@ -4410,6 +4456,7 @@ function onHistoryControlChange(changed){
 function renderHistory(){
   const stack=document.getElementById("historyStack");
   if(!stack)return;
+  historyResetDatasets();
   const ds=historyDatasetById((document.getElementById("historyDataset")||{}).value);
   const scopeChip=document.getElementById("historyScope");
   const kpiHost=document.getElementById("historyKpis");
@@ -4431,27 +4478,23 @@ function renderHistory(){
   const labels=periods.map(periodLabel);
   const arts=historyArticles(ds);
   const selected=arts.filter(a=>historySelected.has(a.zeile));
-  const valOf=(zeile,year,kw)=>{
-    const r=ds.rows.find(x=>x.Jahr===year&&x["KW Nr."]===kw&&x.Zeile===zeile);
-    return r?n(r[ds.valueKey]):null;
-  };
+  const valOf=(zeile,year,kw)=>ds.valueAt(zeile,year,kw);
   const rangeLabel=multiYear
     ? `${historyKwLabel(kFrom)}/${yFrom} – ${historyKwLabel(kTo)}/${yTo}`
     : `${historyKwLabel(kFrom)}–${historyKwLabel(kTo)} ${yFrom}`;
   // Scope-Chip
   if(scopeChip){
-    const pkeys=new Set(periods.map(p=>p.year+"-"+p.kw));
-    const files=new Set(ds.rows.filter(r=>historySelected.has(r.Zeile)&&pkeys.has(r.Jahr+"-"+r["KW Nr."])).map(r=>r.Quelldatei));
-    scopeChip.textContent=`${selected.length} Produkte · ${multiYear?`${yFrom}–${yTo}`:yFrom} · ${periods.length} KW · ${files.size} Dateien`;
+    scopeChip.textContent=`${selected.length} Kennzahlen · ${multiYear?`${yFrom}–${yTo}`:yFrom} · ${periods.length} KW`;
   }
   if(!selected.length||!periods.length){
-    stack.innerHTML=`<div class="history-stack-empty">${selected.length?"Kein gültiger Zeitraum gewählt.":"Bitte oben mindestens ein Produkt auswählen."}</div>`;
+    stack.innerHTML=`<div class="history-stack-empty">${selected.length?"Kein gültiger Zeitraum gewählt.":"Bitte oben mindestens eine Kennzahl auswählen."}</div>`;
     kpiHost.innerHTML="";tableHost.innerHTML="";
     document.getElementById("historyTableSub").textContent="";
     return;
   }
-  // KPI je Produkt: aktueller Preis (letzte Periode) + Veränderung über den Zeitraum
+  // KPI je Kennzahl: aktueller Wert (letzte Periode) + Veränderung über den Zeitraum
   kpiHost.innerHTML=selected.map(a=>{
+    const meta0=historyArticleMeta(ds,a.zeile);
     const vals=periods.map(p=>valOf(a.zeile,p.year,p.kw));
     const firstV=vals.find(v=>v!==null),lastV=[...vals].reverse().find(v=>v!==null);
     let meta=rangeLabel;
@@ -4459,21 +4502,22 @@ function renderHistory(){
       const d=(lastV-firstV)/firstV*100;
       meta=`${d>=0?"+":""}${fmt2.format(d)} % im Zeitraum`;
     }
-    return detailKpi(a.name,lastV??null,ds.type,meta);
+    return detailKpi(a.name,lastV??null,meta0.type,meta);
   }).join("");
-  // Ein fortlaufender Zeitstrahl je Produkt (untereinander), gleiche Zeitachse
+  // Ein fortlaufender Zeitstrahl je Kennzahl (untereinander), gleiche Zeitachse
   stack.innerHTML="";
   selected.forEach(a=>{
+    const am=historyArticleMeta(ds,a.zeile);
     const chartId=`historyChart_${a.zeile}`;
     const card=document.createElement("div");
     card.className="card";
     card.innerHTML=`<div class="card-title-row">
-        <div><h3>${esc(a.name)}</h3><div class="card-sub">Zeile ${a.zeile}, Spalte D · ${esc(rangeLabel)} · ${esc(ds.unit)}</div></div>
+        <div><h3>${esc(a.name)}</h3><div class="card-sub">${esc(rangeLabel)}${am.unit?" · "+esc(am.unit):""}</div></div>
         <span class="chip" data-trend="${a.zeile}"></span>
       </div>
       <div class="chart" id="${chartId}"></div>`;
     stack.append(card);
-    const series=[{name:a.name,color:historyColorForZeile(ds,a.zeile),values:periods.map(p=>valOf(a.zeile,p.year,p.kw)),format:v=>fmt2.format(v)+" "+ds.unit}];
+    const series=[{name:a.name,color:historyColorForZeile(ds,a.zeile),values:periods.map(p=>valOf(a.zeile,p.year,p.kw)),format:v=>format(v,am.type)}];
     lineChart(chartId,labels,series,{tick:v=>fmt0.format(v)});
     // Trend-Chip
     const vals=series[0].values;
@@ -4485,14 +4529,15 @@ function renderHistory(){
       chip.style.color=d>=0?"#2f7d32":"#b23b3b";
     }
   });
-  // Vergleichstabelle: Periode × Produkt
+  // Vergleichstabelle: Periode × Kennzahl (je Kennzahl eigene Einheit)
+  const selMeta=selected.map(a=>historyArticleMeta(ds,a.zeile));
   const head=`<thead><tr><th>KW</th>${multiYear?"<th>Jahr</th>":""}${selected.map(a=>`<th>${esc(a.name)}</th>`).join("")}</tr></thead>`;
   const body=periods.map(p=>{
-    const cells=selected.map(a=>{const v=valOf(a.zeile,p.year,p.kw);return `<td>${v==null?"–":format(v,ds.type)}</td>`;}).join("");
+    const cells=selected.map((a,i)=>{const v=valOf(a.zeile,p.year,p.kw);return `<td>${v==null?"–":format(v,selMeta[i].type)}</td>`;}).join("");
     return `<tr><td><b>${historyKwLabel(p.kw)}</b></td>${multiYear?`<td>${p.year}</td>`:""}${cells}</tr>`;
   }).join("");
   tableHost.innerHTML=head+"<tbody>"+body+"</tbody>";
-  document.getElementById("historyTableSub").textContent=`${rangeLabel} · ${selected.length} Produkte · Quelle: ${ds.label}`;
+  document.getElementById("historyTableSub").textContent=`${rangeLabel} · ${selected.length} Kennzahlen · Quelle: ${ds.label}`;
 }
 
 function updateAll(){
