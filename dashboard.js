@@ -547,6 +547,26 @@ function persistImportedBundle(bundle){
   stored[`${kind}:${periodKey}`]=bundle;
   storageSet(IMPORT_STORAGE_KEY,JSON.stringify(stored));
 }
+/* Mehrere Importe in EINEM Schreibvorgang speichern; bei vollem Speicher so viele wie
+   möglich behalten und dies zurückmelden (statt still zu scheitern). */
+function persistImportedBundlesBatch(bundles){
+  if(!bundles||!bundles.length)return {ok:true,saved:0,quotaHit:false};
+  let stored={};
+  try{stored=JSON.parse(storageGet(IMPORT_STORAGE_KEY)||"{}");}catch(e){stored={};}
+  let saved=0,quotaHit=false,lastGood=null;
+  try{lastGood=JSON.stringify(stored);}catch(e){lastGood="{}";}
+  for(const bundle of bundles){
+    const kind=bundle.kind||"weekly";
+    const periodKey=`${bundle.year||2026}:${String(bundle.week).padStart(2,"0")}`;
+    stored[`${kind}:${periodKey}`]=bundle;
+    let serialized;
+    try{serialized=JSON.stringify(stored);}catch(e){quotaHit=true;break;}
+    try{localStorage.setItem(IMPORT_STORAGE_KEY,serialized);lastGood=serialized;saved++;}
+    catch(e){quotaHit=true;break;}
+  }
+  if(quotaHit&&lastGood!==null){try{localStorage.setItem(IMPORT_STORAGE_KEY,lastGood);}catch(e){}}
+  return {ok:!quotaHit,saved,quotaHit};
+}
 function mergeSawlineBundle(bundle,{persist=false}={}){
   DATA.sawlineReports=DATA.sawlineReports.filter(row=>!(row["KW Nr."]===bundle.week&&Number(row.Jahr||2026)===bundle.year));
   DATA.sawlineReports.push(...bundle.rows);
@@ -750,7 +770,7 @@ async function importExcelFiles(fileList,options={}){
     expectedKind==="sawline"?"Sägelinie":"Excel-Datei";
   setUploadStatus(`${files.length} ${kindLabel}-Datei(en) aus ${source} werden lokal geprüft …`,"working");
 
-  const successes=[],importedWeeks=[],importedSawlineWeeks=[],errors=[];
+  const successes=[],importedWeeks=[],importedSawlineWeeks=[],errors=[],persistQueue=[];
 
   for(const file of files){
     try{
@@ -775,7 +795,8 @@ async function importExcelFiles(fileList,options={}){
         ?parseSawlineReport(matrix,file.name)
         :parseWeeklyReport(matrix,file.name);
 
-      mergeAnyImportedBundle(bundle,{persist:true});
+      mergeAnyImportedBundle(bundle,{persist:false});
+      persistQueue.push(bundle);   // gesammelt speichern (ein Schreibvorgang, robuster bei vielen Dateien)
 
       const warningText=Array.isArray(bundle.warnings)&&bundle.warnings.length
         ?` · ${bundle.warnings.length} Hinweis(e)`:"";
@@ -789,6 +810,8 @@ async function importExcelFiles(fileList,options={}){
     }
   }
 
+  const persistResult=persistImportedBundlesBatch(persistQueue);
+
   if(successes.length){
     rebuildWeekSelectors(true);
     rebuildSawlineSelectors(importedSawlineWeeks.length?Math.max(...importedSawlineWeeks):null);
@@ -799,15 +822,17 @@ async function importExcelFiles(fileList,options={}){
     renderStatisticsBoard();
   }
 
-  if(errors.length){
-    setUploadStatus(`${successes.length} importiert; Fehler: ${errors.join(" | ")}`,"error");
-  }else{
-    setUploadStatus(`${successes.join(", ")} aus ${source} erfolgreich importiert.`,"success");
-  }
+  // Statusmeldung zusammenfassen (nicht jede einzelne Datei auflisten)
+  const parts=[];
+  if(successes.length)parts.push(`${successes.length} Datei(en) importiert`);
+  if(errors.length)parts.push(`${errors.length} fehlerhaft: ${errors.slice(0,6).join(" | ")}${errors.length>6?" | …":""}`);
+  if(persistResult.quotaHit)parts.push(`Speicher voll – nur ${persistResult.saved} Import(e) bleiben nach Neuladen erhalten. Bitte weniger Dateien gleichzeitig laden oder das eigenständige Dashboard (index.html) nutzen.`);
+  const state=errors.length||persistResult.quotaHit?"error":"success";
+  setUploadStatus(parts.length?parts.join(" · "):"Keine Dateien importiert.",state);
 
   excelUpload.value="";
   pendingLocalUploadKind="auto";
-  return {successes,errors};
+  return {successes,errors,persist:persistResult};
 }
 
 
