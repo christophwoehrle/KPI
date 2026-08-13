@@ -192,7 +192,8 @@ async function readFirstWorksheet(file){
 }
 function reportCell(matrix,row,column){return matrix[row-1]?.[column]??null}
 function weeklyFileMeta(fileName,{required=true}={}){
-  const match=String(fileName||"").match(/^KW-(\d{2})-(20\d{2})\.xlsx$/i);
+  // Trennzeichen zwischen KW, Nummer und Jahr sind optional (KW-28-2025 / KW282025 / KW_28_2025 …).
+  const match=String(fileName||"").match(/^KW[-_ ]?(\d{1,2})[-_ ]?(20\d{2})\.xlsx$/i);
   if(!match){
     if(required)throw new Error("Allgemeine Wochenberichte müssen dem Schema KW-XX-20XX.xlsx entsprechen, zum Beispiel KW-18-2026.xlsx.");
     return null;
@@ -264,44 +265,48 @@ function parseSawlineReport(matrix,fileName){
 function parseWeeklyReport(matrix,fileName){
   const fileMeta=weeklyFileMeta(fileName);
   const week=fileMeta.week,year=fileMeta.year,weekLabel="KW"+String(week).padStart(2,"0");
+  // Umsatzuntergliederung: Produkte in Zeilen 3–12 (A Name, C Menge, D EUR/€/m³, E M%)
   const salesBreakdown=REPORT_SALES_CATEGORIES.map((category,index)=>({
     "KW":weekLabel,"KW Nr.":week,"Kategorie":category,
-    "Menge (m³)":parseReportNumber(reportCell(matrix,5+index,4)),
-    "EUR (€/m³)":parseReportNumber(reportCell(matrix,5+index,5)),
-    "M%":parseReportNumber(reportCell(matrix,5+index,6))
+    "Menge (m³)":parseReportNumber(reportCell(matrix,3+index,2)),
+    "EUR (€/m³)":parseReportNumber(reportCell(matrix,3+index,3)),
+    "M%":parseReportNumber(reportCell(matrix,3+index,4))
   }));
   const countryShares={},countryPrices={};
+  // Länder: Zeilen 3–15 (F Land, G M%, H Ø-Preis HW-Säge, I Ø-Preis Gesamt)
   const countryComparison=REPORT_COUNTRIES.map((country,index)=>{
-    const row=19+index;
+    const row=3+index;
     const record={
       "KW":weekLabel,"KW Nr.":week,"Jahr":year,"Land":country,
-      "M%":parseReportNumber(reportCell(matrix,row,3)),
-      "M% HW-Säge":parseReportNumber(reportCell(matrix,row,4)),
-      "M% SW":parseReportNumber(reportCell(matrix,row,5)),
-      "Ø-Preis HW-Säge":parseReportNumber(reportCell(matrix,row,6)),
-      "Ø-Preis Gesamt":parseReportNumber(reportCell(matrix,row,7)),
+      "M%":parseReportNumber(reportCell(matrix,row,6)),
+      "M% HW-Säge":null,
+      "M% SW":null,
+      "Ø-Preis HW-Säge":parseReportNumber(reportCell(matrix,row,7)),
+      "Ø-Preis Gesamt":parseReportNumber(reportCell(matrix,row,8)),
       "Quelldatei":fileName
     };
     countryShares[country]=record["M%"];
     countryPrices[country]=record["Ø-Preis Gesamt"];
     return record;
   });
+  // Veredelungen: Zeilen 18–20 (C Schnittholz gesamt, D Hauptware Säge, F NE Sägewerk, G Rest)
   const refinement={};
-  [["Trocknung",34],["Hobelung",35],["Imprägnierung",36]].forEach(([name,row])=>{
+  [["Trocknung",18],["Hobelung",19],["Imprägnierung",20]].forEach(([name,row])=>{
     refinement[name]={
-      total:parseReportNumber(reportCell(matrix,row,4)),
-      main:parseReportNumber(reportCell(matrix,row,5)),
-      side:parseReportNumber(reportCell(matrix,row,6)),
-      rest:parseReportNumber(reportCell(matrix,row,7))
+      total:parseReportNumber(reportCell(matrix,row,2)),
+      main:parseReportNumber(reportCell(matrix,row,3)),
+      side:parseReportNumber(reportCell(matrix,row,5)),
+      rest:parseReportNumber(reportCell(matrix,row,6))
     };
   });
+  // Leistung Produktion: Zeilen 27–31 (C Aktuell, D YTD lfd. Jahr, E YTD Vorjahr, F Differenz)
   const production={};
-  [["Säge",43],["Gatter",44],["Gesamt Fm",45],["Gesamt m³",46],["RHP",47]].forEach(([name,row])=>{
+  [["Säge",27],["Gatter",28],["Gesamt Fm",29],["Gesamt m³",30],["RHP",31]].forEach(([name,row])=>{
     production[name]={
-      current:parseReportNumber(reportCell(matrix,row,4)),
-      ytd2026:parseReportNumber(reportCell(matrix,row,5)),
-      ytd2025:parseReportNumber(reportCell(matrix,row,6)),
-      difference:parseReportNumber(reportCell(matrix,row,7))
+      current:parseReportNumber(reportCell(matrix,row,2)),
+      ytd2026:parseReportNumber(reportCell(matrix,row,3)),
+      ytd2025:parseReportNumber(reportCell(matrix,row,4)),
+      difference:parseReportNumber(reportCell(matrix,row,5))
     };
   });
   const productionCurrent=REPORT_PRODUCTION_CATEGORIES.map(name=>({
@@ -309,45 +314,52 @@ function parseWeeklyReport(matrix,fileName){
     "Aktuell":production[name].current,
     "Einheit":name==="Gesamt m³"?"m³":"fm"
   }));
+  // A-Eingang: Zeile 35 Gesamt (C gesamt, D getrocknet, E gehobelt, F reserviert), 36 Frankreich, 37 übrige
   const incoming={
-    total:parseReportNumber(reportCell(matrix,51,4)),
-    dried:parseReportNumber(reportCell(matrix,51,5)),
-    planed:parseReportNumber(reportCell(matrix,51,6)),
-    reserved:parseReportNumber(reportCell(matrix,51,7)),
-    franceTotal:parseReportNumber(reportCell(matrix,52,4)),
-    franceDried:parseReportNumber(reportCell(matrix,52,5)),
-    otherTotal:parseReportNumber(reportCell(matrix,53,4)),
-    otherDried:parseReportNumber(reportCell(matrix,53,5))
+    total:parseReportNumber(reportCell(matrix,35,2)),
+    dried:parseReportNumber(reportCell(matrix,35,3)),
+    planed:parseReportNumber(reportCell(matrix,35,4)),
+    reserved:parseReportNumber(reportCell(matrix,35,5)),
+    franceTotal:parseReportNumber(reportCell(matrix,36,2)),
+    franceDried:parseReportNumber(reportCell(matrix,36,3)),
+    otherTotal:parseReportNumber(reportCell(matrix,37,2)),
+    otherDried:parseReportNumber(reportCell(matrix,37,3))
   };
+  // Auftragsbestand: Zeilen 40–43. 4W: A Ziel, B Gesamt, C mit Reserv. | 8W: D Ziel, E Gesamt, F mit Reserv.
   const backlog=[];
-  for(let row=57;row<=60;row++){
-    backlog.push({target:String(reportCell(matrix,row,2)||"").replace(/\s/g,""),total:parseReportNumber(reportCell(matrix,row,3)),reserved:parseReportNumber(reportCell(matrix,row,4))});
-    backlog.push({target:String(reportCell(matrix,row,5)||"").replace(/\s/g,""),total:parseReportNumber(reportCell(matrix,row,6)),reserved:parseReportNumber(reportCell(matrix,row,7))});
+  for(let row=40;row<=43;row++){
+    backlog.push({target:String(reportCell(matrix,row,0)||"").replace(/\s/g,""),total:parseReportNumber(reportCell(matrix,row,1)),reserved:parseReportNumber(reportCell(matrix,row,2))});
+    backlog.push({target:String(reportCell(matrix,row,3)||"").replace(/\s/g,""),total:parseReportNumber(reportCell(matrix,row,4)),reserved:parseReportNumber(reportCell(matrix,row,5))});
   }
   const firstFour=backlog.filter((_,index)=>index%2===0);
   const sum4=firstFour.reduce((sum,item)=>sum+(item.total||0),0);
   const sum4Reserved=firstFour.reduce((sum,item)=>sum+(item.reserved||0),0);
   const sum8=backlog.reduce((sum,item)=>sum+(item.total||0),0);
   const sum8Reserved=backlog.reduce((sum,item)=>sum+(item.reserved||0),0);
-  const reported4=parseReportNumber(reportCell(matrix,63,4));
-  const reservationPct=parseReportNumber(reportCell(matrix,63,5));
+  // 4-Wochenfenster: Zeile 46 (B +/-, C 4W gemeldet, D Reserv.%, E Lagerbestand)
+  const windowPlusMinus=parseReportNumber(reportCell(matrix,46,1));
+  const reported4=parseReportNumber(reportCell(matrix,46,2));
+  const reservationPct=parseReportNumber(reportCell(matrix,46,3));
+  const lagerbestand=parseReportNumber(reportCell(matrix,46,4));
+  // Auftragsbestand Trocknung: Zeilen 49–51 (A Ziel-KW, B Wert)
   const drying=[];
-  for(let row=66;row<=68;row++)drying.push({
-    target:String(reportCell(matrix,row,2)||"").replace("TR ","").replace(/\s/g,""),
-    value1:parseReportNumber(reportCell(matrix,row,3)),
-    value2:parseReportNumber(reportCell(matrix,row,4))
+  for(let row=49;row<=51;row++)drying.push({
+    target:String(reportCell(matrix,row,0)||"").replace("TR ","").replace(/\s/g,""),
+    value1:parseReportNumber(reportCell(matrix,row,1)),
+    value2:null
   });
+  // Anzahl Verladungen: Zeilen 49–53 (E Tag, F Anzahl), Zeile 54 Gesamt (F Summe, G Ø)
   const weekdays=["Montag","Dienstag","Mittwoch","Donnerstag","Freitag"];
   const shipmentDays={};
-  weekdays.forEach((day,index)=>shipmentDays[day]=parseReportNumber(reportCell(matrix,66+index,7)));
-  const shipmentTotal=parseReportNumber(reportCell(matrix,71,7));
-  const shipmentAverage=parseReportNumber(reportCell(matrix,71,8));
+  weekdays.forEach((day,index)=>shipmentDays[day]=parseReportNumber(reportCell(matrix,49+index,5)));
+  const shipmentTotal=parseReportNumber(reportCell(matrix,54,5));
+  const shipmentAverage=parseReportNumber(reportCell(matrix,54,6));
   const weekly={
     "KW":weekLabel,"KW Nr.":week,
-    "Umsatzmenge gesamt (m³)":parseReportNumber(reportCell(matrix,16,4)),
-    "Ø Preis gesamt (€/m³)":parseReportNumber(reportCell(matrix,16,5)),
-    "DB Netto (€)":parseReportNumber(reportCell(matrix,39,5)),
-    "DB (€/m³)":parseReportNumber(reportCell(matrix,39,6)),
+    "Umsatzmenge gesamt (m³)":parseReportNumber(reportCell(matrix,15,2)),
+    "Ø Preis gesamt (€/m³)":parseReportNumber(reportCell(matrix,15,3)),
+    "DB Netto (€)":parseReportNumber(reportCell(matrix,23,3)),
+    "DB (€/m³)":parseReportNumber(reportCell(matrix,23,4)),
     "Produktion KW gesamt (fm)":production["Gesamt Fm"].current,
     "Produktion YTD 2026 (fm)":production["Gesamt Fm"].ytd2026,
     "Produktion YTD 2025 (fm)":production["Gesamt Fm"].ytd2025,
@@ -356,7 +368,7 @@ function parseWeeklyReport(matrix,fileName){
     "Auftragsbestand 4W (m³)":reported4,
     "Auftragsbestand 8W gesamt (m³)":sum8,
     "Auftragsbestand 8W inkl. Reserv. (m³)":sum8Reserved,
-    "Lagerbestand (m³)":parseReportNumber(reportCell(matrix,63,6)),
+    "Lagerbestand (m³)":lagerbestand,
     "Reservierungsquote":reservationPct===null?null:reservationPct/100,
     "Verladungen gesamt":shipmentTotal,
     "Verladungen Ø/Tag":shipmentAverage,
@@ -374,7 +386,7 @@ function parseWeeklyReport(matrix,fileName){
     "A-Eingang getrocknet (m³)":incoming.dried,
     "A-Eingang gehobelt (m³)":incoming.planed,
     "A-Eingang reserviert (m³)":incoming.reserved,
-    "4-Wochenfenster +/- (m³)":parseReportNumber(reportCell(matrix,63,3)),
+    "4-Wochenfenster +/- (m³)":windowPlusMinus,
     "Quelldatei":fileName,
     "Preisindex (KW18=100)":null,"DB-Index (KW18=100)":null
   };
