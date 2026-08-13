@@ -1634,6 +1634,8 @@ function initControls(){
   const weeks=DATA.weekly.map(r=>r["KW Nr."]);
   populateGlobalWeekScroller(Math.max(...weeks));
   displayWeek.addEventListener("change",()=>setGlobalDisplayWeek(Number(displayWeek.value)));
+  const displayYearSel=document.getElementById("displayYear");
+  if(displayYearSel)displayYearSel.addEventListener("change",()=>setGlobalDisplayYear(displayYearSel.value));
   previousWeekBtn.addEventListener("click",()=>stepGlobalDisplayWeek(-1));
   nextWeekBtn.addEventListener("click",()=>stepGlobalDisplayWeek(1));
   weekScroller.addEventListener("wheel",event=>{
@@ -1728,6 +1730,8 @@ function initControls(){
   areaFilter.innerHTML+=areas.map(a=>`<option>${esc(a)}</option>`).join("");
   ["priorityFilter","areaFilter","issueSearch"].forEach(id=>document.getElementById(id).addEventListener("input",renderIssues));
   csvBtn.addEventListener("click",downloadCSV);
+  const pdfBtn=document.getElementById("pdfBtn");
+  if(pdfBtn)pdfBtn.addEventListener("click",exportDashboardPdf);
   dashboardQuestionBtn.addEventListener("click",processDashboardQuestion);
   dashboardQuestionInput.addEventListener("keydown",event=>{
     if(event.key==="Enter"){
@@ -1814,8 +1818,23 @@ function initControls(){
 const kpiWeekSelection={};
 
 
+let dashboardDisplayYear=null;   // aktuell im Header gewähltes Jahr (alle Fenster)
+function weeklyYearOf(row){
+  if(row.Jahr!==undefined&&row.Jahr!==null&&row.Jahr!=="")return Number(row.Jahr);
+  const m=String(row.Quelldatei||"").match(/(20\d{2})/);
+  return m?Number(m[1]):2026;
+}
+function weeklyYears(){
+  return [...new Set(DATA.weekly.map(weeklyYearOf).filter(Number.isFinite))].sort((a,b)=>a-b);
+}
+function activeDashboardYear(){
+  const years=weeklyYears();
+  if(dashboardDisplayYear!=null&&years.includes(dashboardDisplayYear))return dashboardDisplayYear;
+  return years.length?years[years.length-1]:2026;
+}
 function availableDashboardWeeks(){
-  return [...new Set(DATA.weekly.map(row=>Number(row["KW Nr."])).filter(Number.isFinite))].sort((a,b)=>a-b);
+  const year=activeDashboardYear();
+  return [...new Set(DATA.weekly.filter(row=>weeklyYearOf(row)===year).map(row=>Number(row["KW Nr."])).filter(Number.isFinite))].sort((a,b)=>a-b);
 }
 function availableAllKpiWeeks(){
   return [...new Set([
@@ -1873,13 +1892,34 @@ function stepGlobalDisplayWeek(direction){
   const nextIndex=Math.max(0,Math.min(weeks.length-1,index+direction));
   if(nextIndex!==index)setGlobalDisplayWeek(weeks[nextIndex]);
 }
+function populateGlobalYearSelector(){
+  const sel=document.getElementById("displayYear");
+  if(!sel)return;
+  const years=weeklyYears();
+  const active=activeDashboardYear();
+  sel.innerHTML=years.map(y=>`<option value="${y}">${y}</option>`).join("");
+  sel.value=String(active);
+  // Bei nur einem Jahr trotzdem sichtbar lassen (Auswahl zeigt das Jahr an)
+}
 function populateGlobalWeekScroller(preferredWeek=null){
   if(!document.getElementById("displayWeek"))return;
+  populateGlobalYearSelector();
   const weeks=availableDashboardWeeks();
   const current=preferredWeek??Number(displayWeek.value);
   displayWeek.innerHTML=weeks.map(week=>`<option value="${week}">KW${week}</option>`).join("");
   displayWeek.value=String(weeks.includes(current)?current:Math.max(...weeks));
   updateWeekScrollerState();
+}
+function setGlobalDisplayYear(year){
+  const years=weeklyYears();
+  const y=Number(year);
+  if(!years.includes(y))return;
+  dashboardDisplayYear=y;
+  const weeks=availableDashboardWeeks();
+  const target=weeks.length?Math.max(...weeks):null;
+  populateGlobalWeekScroller(target);
+  if(target!=null)setGlobalDisplayWeek(target,{showHint:false});
+  else updateAll();
 }
 
 function synchronizeAllDashboardWindows(week){
@@ -3649,6 +3689,28 @@ function downloadCSV(){
   a.href=url;a.download=`KW_Daten_${rows[0].KW}-${rows[rows.length-1].KW}.csv`;a.click();URL.revokeObjectURL(url)
 }
 
+/* PDF-Export: aktive Ansicht über den Druckdialog als PDF sichern (offline, ohne externe Bibliothek). */
+function exportDashboardPdf(){
+  const activeView=document.querySelector(".view.active");
+  const activeTab=nav.querySelector("button.active[data-view]");
+  const viewName=activeTab?activeTab.textContent.trim():(activeView?activeView.id:"Dashboard");
+  const kw=document.getElementById("displayWeek")?`KW${displayWeek.value}`:"";
+  const year=activeDashboardYear();
+  const now=new Date();
+  const dateStr=now.toLocaleDateString("de-DE",{day:"2-digit",month:"2-digit",year:"numeric"});
+  const printHeader=document.getElementById("printHeader");
+  if(printHeader){
+    printHeader.innerHTML=`<div class="ph-title">Sägewerk Streit · ${esc(viewName)}</div>
+      <div class="ph-meta">Stand ${esc(kw)}/${esc(String(year))} · erzeugt am ${esc(dateStr)} · Wochen- & YTD-Dashboard</div>`;
+  }
+  const previousTitle=document.title;
+  document.title=`Streit_Dashboard_${viewName.replace(/[^\wäöüÄÖÜß-]+/g,"_")}_${kw}_${year}`;
+  const restore=()=>{document.title=previousTitle;window.removeEventListener("afterprint",restore);};
+  window.addEventListener("afterprint",restore);
+  // Charts sind bereits gerendert; kurz warten, damit Layout-Reflow greift, dann drucken.
+  setTimeout(()=>{ try{window.print();}catch(e){ /* Druckdialog nicht verfügbar */ } },60);
+}
+
 const CLOSED_STANDARD_WINDOWS_KEY="kwDashboardClosedStandardWindowsV1";
 let closedStandardWindows=new Set();
 
@@ -4209,6 +4271,22 @@ function historyYears(ds){
 function historyWeeks(ds){
   return [...new Set(ds.rows.map(r=>r["KW Nr."]))].sort((a,b)=>a-b);
 }
+function historyWeeksForYear(ds,year){
+  return [...new Set(ds.rows.filter(r=>r.Jahr===year).map(r=>r["KW Nr."]))].sort((a,b)=>a-b);
+}
+/* Fortlaufende Perioden von (Jahr von, KW von) bis (Jahr bis, KW bis) über Jahresgrenzen. */
+function historyPeriods(ds,yFrom,kwFrom,yTo,kwTo){
+  const periods=[];
+  for(let y=yFrom;y<=yTo;y++){
+    const wks=historyWeeksForYear(ds,y);
+    if(!wks.length)continue;
+    let lo=wks[0],hi=wks[wks.length-1];
+    if(y===yFrom)lo=Math.max(lo,kwFrom);
+    if(y===yTo)hi=Math.min(hi,kwTo);
+    wks.filter(w=>w>=lo&&w<=hi).forEach(w=>periods.push({year:y,kw:w}));
+  }
+  return periods;
+}
 function historyKwLabel(n){return "KW"+String(n).padStart(2,"0");}
 function historyFillSelect(sel,items,value){
   if(!sel)return;
@@ -4259,15 +4337,15 @@ function initHistory(){
   if(!ds){renderHistory();return;}
   historySelected=new Set(historyDefaultSelection(ds));
   renderHistoryArticleChips(ds);
-  // Jahr (inkl. Vergleich über alle Jahre)
+  // Jahr von / bis (fortlaufender Zeitraum über Jahresgrenzen)
   const years=historyYears(ds);
-  const yearItems=[{value:"all",label:"Alle Jahre (Vergleich)"}].concat(years.map(y=>({value:y,label:String(y)})));
-  historyFillSelect(document.getElementById("historyYear"),yearItems,years[years.length-1]);
+  historyFillSelect(document.getElementById("historyYearFrom"),years.map(y=>({value:y,label:String(y)})),years[0]);
+  historyFillSelect(document.getElementById("historyYearTo"),years.map(y=>({value:y,label:String(y)})),years[years.length-1]);
   // KW von / bis
   const weeks=historyWeeks(ds);
   historyFillSelect(document.getElementById("historyFrom"),weeks.map(w=>({value:w,label:historyKwLabel(w)})),weeks[0]);
   historyFillSelect(document.getElementById("historyTo"),weeks.map(w=>({value:w,label:historyKwLabel(w)})),weeks[weeks.length-1]);
-  ["historyDataset","historyYear","historyFrom","historyTo"].forEach(id=>{
+  ["historyDataset","historyYearFrom","historyYearTo","historyFrom","historyTo"].forEach(id=>{
     const el=document.getElementById(id);
     if(el)el.addEventListener("change",()=>onHistoryControlChange(id));
   });
@@ -4288,18 +4366,22 @@ function onHistoryControlChange(changed){
     historySelected=new Set(historyDefaultSelection(ds));
     renderHistoryArticleChips(ds);
     const years=historyYears(ds);
-    historyFillSelect(document.getElementById("historyYear"),
-      [{value:"all",label:"Alle Jahre (Vergleich)"}].concat(years.map(y=>({value:y,label:String(y)}))),
-      years[years.length-1]);
+    historyFillSelect(document.getElementById("historyYearFrom"),years.map(y=>({value:y,label:String(y)})),years[0]);
+    historyFillSelect(document.getElementById("historyYearTo"),years.map(y=>({value:y,label:String(y)})),years[years.length-1]);
     const weeks=historyWeeks(ds);
     historyFillSelect(document.getElementById("historyFrom"),weeks.map(w=>({value:w,label:historyKwLabel(w)})),weeks[0]);
     historyFillSelect(document.getElementById("historyTo"),weeks.map(w=>({value:w,label:historyKwLabel(w)})),weeks[weeks.length-1]);
   }
-  // KW von darf nicht größer als bis sein
-  const fromEl=document.getElementById("historyFrom"),toEl=document.getElementById("historyTo");
-  if(fromEl&&toEl){
-    let from=Number(fromEl.value),to=Number(toEl.value);
-    if(from>to){ if(changed==="historyFrom")toEl.value=String(from); else fromEl.value=String(to); }
+  // (Jahr von, KW von) darf nicht nach (Jahr bis, KW bis) liegen
+  const yF=document.getElementById("historyYearFrom"),kF=document.getElementById("historyFrom"),
+        yT=document.getElementById("historyYearTo"),kT=document.getElementById("historyTo");
+  if(yF&&kF&&yT&&kT){
+    const ordF=Number(yF.value)*100+Number(kF.value),ordT=Number(yT.value)*100+Number(kT.value);
+    if(ordF>ordT){
+      const fromSide=(changed==="historyYearFrom"||changed==="historyFrom");
+      if(fromSide){yT.value=yF.value;kT.value=kF.value;}
+      else{yF.value=yT.value;kF.value=kT.value;}
+    }
   }
   renderHistory();
 }
@@ -4317,77 +4399,78 @@ function renderHistory(){
     document.getElementById("historyTableSub").textContent="";
     return;
   }
-  const yearVal=document.getElementById("historyYear").value;
-  const from=Number(document.getElementById("historyFrom").value);
-  const to=Number(document.getElementById("historyTo").value);
-  const years=historyYears(ds);
-  const activeYears=(yearVal==="all")?years:[Number(yearVal)];
-  const primaryYear=activeYears[activeYears.length-1];
-  const weeksAll=historyWeeks(ds).filter(w=>w>=from&&w<=to);
-  const labels=weeksAll.map(historyKwLabel);
+  const yFrom=Number(document.getElementById("historyYearFrom").value);
+  const yTo=Number(document.getElementById("historyYearTo").value);
+  const kFrom=Number(document.getElementById("historyFrom").value);
+  const kTo=Number(document.getElementById("historyTo").value);
+  const periods=historyPeriods(ds,yFrom,kFrom,yTo,kTo);
+  const multiYear=yFrom!==yTo;
+  const periodLabel=p=>multiYear?historyKwLabel(p.kw)+"·"+String(p.year).slice(2):historyKwLabel(p.kw);
+  const labels=periods.map(periodLabel);
   const arts=historyArticles(ds);
   const selected=arts.filter(a=>historySelected.has(a.zeile));
   const valOf=(zeile,year,kw)=>{
     const r=ds.rows.find(x=>x.Jahr===year&&x["KW Nr."]===kw&&x.Zeile===zeile);
     return r?n(r[ds.valueKey]):null;
   };
+  const rangeLabel=multiYear
+    ? `${historyKwLabel(kFrom)}/${yFrom} – ${historyKwLabel(kTo)}/${yTo}`
+    : `${historyKwLabel(kFrom)}–${historyKwLabel(kTo)} ${yFrom}`;
   // Scope-Chip
   if(scopeChip){
-    const files=new Set(ds.rows.filter(r=>historySelected.has(r.Zeile)&&activeYears.includes(r.Jahr)&&r["KW Nr."]>=from&&r["KW Nr."]<=to).map(r=>r.Quelldatei));
-    scopeChip.textContent=`${selected.length} Produkte · ${activeYears.join(" · ")} · ${weeksAll.length} KW · ${files.size} Dateien`;
+    const pkeys=new Set(periods.map(p=>p.year+"-"+p.kw));
+    const files=new Set(ds.rows.filter(r=>historySelected.has(r.Zeile)&&pkeys.has(r.Jahr+"-"+r["KW Nr."])).map(r=>r.Quelldatei));
+    scopeChip.textContent=`${selected.length} Produkte · ${multiYear?`${yFrom}–${yTo}`:yFrom} · ${periods.length} KW · ${files.size} Dateien`;
   }
-  if(!selected.length){
-    stack.innerHTML='<div class="history-stack-empty">Bitte oben mindestens ein Produkt auswählen.</div>';
+  if(!selected.length||!periods.length){
+    stack.innerHTML=`<div class="history-stack-empty">${selected.length?"Kein gültiger Zeitraum gewählt.":"Bitte oben mindestens ein Produkt auswählen."}</div>`;
     kpiHost.innerHTML="";tableHost.innerHTML="";
     document.getElementById("historyTableSub").textContent="";
     return;
   }
-  // KPI je Produkt: aktueller Preis (jüngstes Jahr, letzte KW) + Veränderung im Zeitraum
+  // KPI je Produkt: aktueller Preis (letzte Periode) + Veränderung über den Zeitraum
   kpiHost.innerHTML=selected.map(a=>{
-    const vals=weeksAll.map(w=>valOf(a.zeile,primaryYear,w));
+    const vals=periods.map(p=>valOf(a.zeile,p.year,p.kw));
     const firstV=vals.find(v=>v!==null),lastV=[...vals].reverse().find(v=>v!==null);
-    let meta=String(primaryYear);
+    let meta=rangeLabel;
     if(firstV!=null&&lastV!=null&&firstV!==0){
       const d=(lastV-firstV)/firstV*100;
-      meta=`${primaryYear} · ${d>=0?"+":""}${fmt2.format(d)} % im Zeitraum`;
+      meta=`${d>=0?"+":""}${fmt2.format(d)} % im Zeitraum`;
     }
     return detailKpi(a.name,lastV??null,ds.type,meta);
   }).join("");
-  // Ein Zeitstrahl-Chart je Produkt (untereinander), gleicher KW-Achse
+  // Ein fortlaufender Zeitstrahl je Produkt (untereinander), gleiche Zeitachse
   stack.innerHTML="";
   selected.forEach(a=>{
     const chartId=`historyChart_${a.zeile}`;
     const card=document.createElement("div");
     card.className="card";
     card.innerHTML=`<div class="card-title-row">
-        <div><h3>${esc(a.name)}</h3><div class="card-sub">Zeile ${a.zeile}, Spalte D · ${esc(historyKwLabel(from))}–${esc(historyKwLabel(to))} · ${esc(ds.unit)}</div></div>
+        <div><h3>${esc(a.name)}</h3><div class="card-sub">Zeile ${a.zeile}, Spalte D · ${esc(rangeLabel)} · ${esc(ds.unit)}</div></div>
         <span class="chip" data-trend="${a.zeile}"></span>
       </div>
       <div class="chart" id="${chartId}"></div>`;
     stack.append(card);
-    // Reihen: bei "Alle Jahre" je Jahr eine Linie, sonst eine Linie in Produktfarbe
-    const series=(activeYears.length>1)
-      ? activeYears.map((year,i)=>({name:String(year),color:colors[i%colors.length],values:weeksAll.map(w=>valOf(a.zeile,year,w)),format:v=>fmt2.format(v)+" "+ds.unit}))
-      : [{name:`${a.name} (${primaryYear})`,color:historyColorForZeile(ds,a.zeile),values:weeksAll.map(w=>valOf(a.zeile,primaryYear,w)),format:v=>fmt2.format(v)+" "+ds.unit}];
+    const series=[{name:a.name,color:historyColorForZeile(ds,a.zeile),values:periods.map(p=>valOf(a.zeile,p.year,p.kw)),format:v=>fmt2.format(v)+" "+ds.unit}];
     lineChart(chartId,labels,series,{tick:v=>fmt0.format(v)});
-    // Trend-Chip der jüngsten Reihe
-    const prim=series[series.length-1];
-    const fV=prim.values.find(v=>v!==null),lV=[...prim.values].reverse().find(v=>v!==null);
+    // Trend-Chip
+    const vals=series[0].values;
+    const fV=vals.find(v=>v!==null),lV=[...vals].reverse().find(v=>v!==null);
     const chip=card.querySelector(`[data-trend="${a.zeile}"]`);
     if(chip&&fV!=null&&lV!=null&&fV!==0){
       const d=(lV-fV)/fV*100;
-      chip.textContent=`${prim.name}: ${d>=0?"+":""}${fmt2.format(d)} %`;
+      chip.textContent=`${d>=0?"+":""}${fmt2.format(d)} %`;
       chip.style.color=d>=0?"#2f7d32":"#b23b3b";
     }
   });
-  // Vergleichstabelle: KW × Produkt (Preise im primären Jahr)
-  const head=`<thead><tr><th>KW</th>${selected.map(a=>`<th>${esc(a.name)}</th>`).join("")}</tr></thead>`;
-  const body=weeksAll.map(w=>{
-    const cells=selected.map(a=>{const v=valOf(a.zeile,primaryYear,w);return `<td>${v==null?"–":format(v,ds.type)}</td>`;}).join("");
-    return `<tr><td><b>${historyKwLabel(w)}</b></td>${cells}</tr>`;
+  // Vergleichstabelle: Periode × Produkt
+  const head=`<thead><tr><th>KW</th>${multiYear?"<th>Jahr</th>":""}${selected.map(a=>`<th>${esc(a.name)}</th>`).join("")}</tr></thead>`;
+  const body=periods.map(p=>{
+    const cells=selected.map(a=>{const v=valOf(a.zeile,p.year,p.kw);return `<td>${v==null?"–":format(v,ds.type)}</td>`;}).join("");
+    return `<tr><td><b>${historyKwLabel(p.kw)}</b></td>${multiYear?`<td>${p.year}</td>`:""}${cells}</tr>`;
   }).join("");
   tableHost.innerHTML=head+"<tbody>"+body+"</tbody>";
-  document.getElementById("historyTableSub").textContent=`Preise ${primaryYear} · ${selected.length} Produkte · Quelle: ${ds.label}${activeYears.length>1?" (Charts zeigen alle Jahre im Vergleich)":""}`;
+  document.getElementById("historyTableSub").textContent=`${rangeLabel} · ${selected.length} Produkte · Quelle: ${ds.label}`;
 }
 
 function updateAll(){
