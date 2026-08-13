@@ -510,6 +510,24 @@ function refreshAreaSummary(){
   });
 }
 
+/* Entfernt ALLE hochgeladenen Dateien (Wochenberichte und Sägelinien-Protokolle, alle Jahre)
+   endgültig aus dem System – Speicher und In-Memory-Stände – und lädt den Ursprungsstand neu.
+   Verhindert Doppelungen bei erneutem Hochladen. */
+function countStoredUploads(){
+  try{return Object.keys(JSON.parse(storageGet(IMPORT_STORAGE_KEY)||"{}")).length;}catch(e){return 0;}
+}
+function deleteAllUploads(){
+  const count=countStoredUploads();
+  const msg=count
+    ? `Alle hochgeladenen Dateien (Wochenberichte und Sägelinien-Protokolle, alle Jahre) – ${count} gespeicherte${count===1?"r Import":" Importe"} – endgültig aus dem System löschen? Das Dashboard wird auf den Ursprungsstand zurückgesetzt.`
+    : "Es sind keine hochgeladenen Dateien gespeichert. Das Dashboard trotzdem auf den Ursprungsstand zurücksetzen?";
+  if(!confirm(msg))return;
+  storageRemove(IMPORT_STORAGE_KEY);
+  // In-Memory-Stände der Historie zurücksetzen (werden beim Neuladen frisch aus den Seed-Daten gebildet)
+  DATA.weeklyHistory=null;DATA.salesHistory=null;
+  historyResetDatasets();
+  location.reload();
+}
 function persistImportedBundle(bundle){
   const stored=JSON.parse(storageGet(IMPORT_STORAGE_KEY)||"{}");
   const kind=bundle.kind||"weekly";
@@ -1774,12 +1792,7 @@ function initControls(){
     pendingLocalUploadKind="auto";
     excelUpload.click();
   });
-  resetImportsBtn.addEventListener("click",()=>{
-    if(confirm("Alle im Browser gespeicherten Wochenimporte löschen und das ursprüngliche Dashboard neu laden?")){
-      storageRemove(IMPORT_STORAGE_KEY);
-      location.reload();
-    }
-  });
+  resetImportsBtn.addEventListener("click",deleteAllUploads);
   resetWindowsBtn.addEventListener("click",resetStandardWindows);
   resetTabsBtn.addEventListener("click",resetTabOrder);
   dataInfoBtn.addEventListener("click",()=>{
