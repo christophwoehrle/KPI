@@ -4482,6 +4482,12 @@ function historyBuildAllDatasets(){
     const zeileOf=cat=>3+cats.indexOf(cat);
     const priceRecs=salesSrc.map(r=>({zeile:zeileOf(r.Kategorie),name:r.Kategorie,unit:"€/m³",type:"price",year:historyRowYear(r,dy),kw:r["KW Nr."],value:r["EUR (€/m³)"]}));
     const mengeRecs=salesSrc.map(r=>({zeile:zeileOf(r.Kategorie),name:r.Kategorie,unit:"m³",type:"m3",year:historyRowYear(r,dy),kw:r["KW Nr."],value:r["Menge (m³)"]}));
+    // Gesamt-Durchschnittspreis bzw. Gesamtmenge aus der Gesamt-Zeile des Wochenberichts (Zeile 2 = ganz oben)
+    weeklySrc.forEach(w=>{
+      const yr=historyRowYear(w,dy),kw=w["KW Nr."];
+      priceRecs.push({zeile:2,name:"Gesamt (Ø-Preis)",unit:"€/m³",type:"price",year:yr,kw,value:w["Ø Preis gesamt (€/m³)"]});
+      mengeRecs.push({zeile:2,name:"Gesamt (Menge)",unit:"m³",type:"m3",year:yr,kw,value:w["Umsatzmenge gesamt (m³)"]});
+    });
     const dPrice=historyBuildDataset("umsatzPreis","Umsatz · Ø-Preis je Produkt (€/m³)",priceRecs,"€/m³","price");
     const dMenge=historyBuildDataset("umsatzMenge","Umsatz · Menge je Produkt (m³)",mengeRecs,"m³","m3");
     if(dPrice)list.push(dPrice);
@@ -4562,7 +4568,7 @@ function historyColorForZeile(ds,zeile){
 function historyDefaultSelection(ds){
   const arts=historyArticles(ds);
   // Beispielprodukte des Nutzers bevorzugen (echte Kategorienamen)
-  const wanted=["hauptware säge","davon bretter","davon contreventement","davon voliges","latten"];
+  const wanted=["gesamt","hauptware säge","davon bretter","davon contreventement","davon voliges","latten"];
   const picked=arts.filter(a=>wanted.some(w=>a.name.toLowerCase().includes(w))).map(a=>a.zeile);
   return picked.length?picked:arts.slice(0,Math.min(5,arts.length)).map(a=>a.zeile);
 }
