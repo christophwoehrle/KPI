@@ -1318,14 +1318,19 @@ body.monitor-mode .nav button[data-action="monitor"]{
 .wm-gauge-base{position:absolute;top:-2px;bottom:-2px;left:50%;width:2px;background:rgba(255,255,255,.7)}
 .wm-gauge-val{font-weight:900;font-size:13px;white-space:nowrap}
 .wm-yoy-abs{font-size:10px;opacity:.8;margin-top:3px}
-.wm-cmp{border-collapse:collapse;margin:6px 0 3px;font-size:11px;min-width:210px}
-.wm-cmp th,.wm-cmp td{padding:2px 8px;text-align:right;white-space:nowrap}
-.wm-cmp th:first-child,.wm-cmp td:first-child{text-align:left;opacity:.85;font-weight:600;padding-left:0}
-.wm-cmp thead th{font-size:10px;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid rgba(255,255,255,.25);padding-bottom:3px}
-.wm-cmp thead th:nth-child(2){color:#8fe0a3}
-.wm-cmp thead th:nth-child(3){opacity:.7}
-.wm-cmp td:nth-child(2){font-weight:700}
-.wm-cmp td:nth-child(3){opacity:.78}
+.wm-cmp{border-collapse:collapse;margin:6px 0 3px;font-size:11px;min-width:220px;border-radius:5px;overflow:hidden}
+.wm-cmp th,.wm-cmp td{padding:3px 8px;text-align:right;white-space:nowrap;position:static}
+.wm-cmp th:first-child,.wm-cmp td:first-child{text-align:left;font-weight:600;padding-left:8px}
+/* Kopfzeile mit Jahreszahlen (heller Balken, dunkle Schrift) */
+.wm-cmp thead th{background:#e7edf3;color:#26303f;font-size:10px;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #cfd8e2;padding-top:4px;padding-bottom:4px}
+.wm-cmp thead th:nth-child(2){color:#1f7a3a}
+.wm-cmp thead th:nth-child(3){color:#5a6678}
+/* Datenzeilen: weißer Grund, dunkle Schrift */
+.wm-cmp tbody td{background:#ffffff;color:#1b2431;border-bottom:1px solid #e6ebf1}
+.wm-cmp tbody tr:nth-child(even) td{background:#f2f6fa}
+.wm-cmp td:first-child{color:#41506a}
+.wm-cmp td:nth-child(2){font-weight:800;color:#123a26}
+.wm-cmp td:nth-child(3){color:#5b6a82;opacity:1}
 .worldmap-source-note{
   display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;
   color:var(--muted);font-size:12px
