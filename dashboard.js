@@ -4210,6 +4210,55 @@ function worldMapProject(lon,lat){
 function worldMapColor(ratio){
   return `hsl(96 ${42+ratio*26}% ${74-ratio*38}%)`;
 }
+/* YTD-Menge je Land bis zur Stichwoche (hergeleitet: Wochen-Umsatzmenge × Länder-M%). */
+function worldMapYtdVolume(land,year,cutoffKW){
+  const dy=historyDashboardYear();
+  const wk=(DATA.weeklyHistory&&DATA.weeklyHistory.length)?DATA.weeklyHistory:(DATA.weekly||[]);
+  let sum=0,has=false;
+  wk.forEach(w=>{
+    if(historyRowYear(w,dy)!==year)return;
+    const kw=w["KW Nr."];if(!Number.isFinite(kw)||kw>cutoffKW)return;
+    const total=n(w["Umsatzmenge gesamt (m³)"]);if(total===null)return;
+    const cr=(DATA.countryComparison||[]).find(r=>Number(r.Jahr||dy)===year&&r["KW Nr."]===kw&&r.Land===land);
+    const mp=n(cr?.["M%"]);if(mp===null)return;
+    sum+=total*mp/100;has=true;
+  });
+  return has?sum:null;
+}
+function worldMapYoyData(){
+  const dy=historyDashboardYear();
+  const years=[...new Set((DATA.countryComparison||[]).map(r=>Number(r.Jahr||dy)))].filter(Number.isFinite).sort((a,b)=>a-b);
+  const currentYear=years.length?years[years.length-1]:dy,prevYear=currentYear-1;
+  const wk=(DATA.weeklyHistory&&DATA.weeklyHistory.length)?DATA.weeklyHistory:(DATA.weekly||[]);
+  const curWeeks=wk.filter(w=>historyRowYear(w,dy)===currentYear).map(w=>w["KW Nr."]).filter(Number.isFinite);
+  const cutoff=curWeeks.length?Math.max(...curWeeks):0;
+  const available=years.includes(prevYear);
+  const map={};
+  Object.keys(WORLD_COUNTRIES).forEach(land=>{
+    const cur=worldMapYtdVolume(land,currentYear,cutoff);
+    const prev=available?worldMapYtdVolume(land,prevYear,cutoff):null;
+    const delta=(cur!==null&&prev!==null&&prev!==0)?(cur-prev)/prev*100:null;
+    map[land]={cur,prev,delta};
+  });
+  return {map,currentYear,prevYear,cutoff,available};
+}
+function worldMapYoyGauge(entry,currentYear,prevYear){
+  if(!entry)return "";
+  const {cur,prev,delta}=entry;
+  const ratio=(prev&&prev!==0&&cur!==null)?cur/prev:null;
+  const fillPct=ratio===null?0:Math.max(0,Math.min(2,ratio))/2*100;   // Skala 0–200 %, Mitte = Vorjahresniveau
+  const up=delta!==null&&delta>=0;
+  const color=delta===null?"#9fb0c0":(up?"#57c473":"#e06d6d");
+  const valText=delta===null?"–":`${up?"+":""}${fmt2.format(delta)} %`;
+  return `<div class="wm-yoy">
+    <div class="wm-yoy-head">Δ YTD-Menge ${currentYear} zu ${prevYear}</div>
+    <div class="wm-gauge">
+      <div class="wm-gauge-track"><div class="wm-gauge-fill" style="width:${fmt2.format(fillPct)}%;background:${color}"></div><div class="wm-gauge-base" title="Vorjahresniveau"></div></div>
+      <div class="wm-gauge-val" style="color:${color}">${valText}</div>
+    </div>
+    <div class="wm-yoy-abs">${currentYear}: ${format(cur,"m3")} · ${prevYear}: ${format(prev,"m3")}</div>
+  </div>`;
+}
 function renderWorldMap(){
   if(!document.getElementById("worldMapSvg"))return;
   const metric=worldMapMetric.value,cfg=worldMapMetricConfig(metric);
@@ -4241,13 +4290,21 @@ function renderWorldMap(){
     const ratio=maxVal===minVal?1:(value-minVal)/(maxVal-minVal);
     return worldMapColor(Math.max(.08,Math.min(1,ratio)));
   };
+  const compare=!!(document.getElementById("worldMapCompare")&&worldMapCompare.checked);
+  const yoy=compare?worldMapYoyData():null;
   Object.keys(worldMapTipByLand).forEach(key=>delete worldMapTipByLand[key]);
   rows.forEach(row=>{
-    worldMapTipByLand[row.land]=`<b>${esc(row.land)}</b> · ${esc(label)}<br>`+
+    let tip=`<b>${esc(row.land)}</b> · ${esc(label)}<br>`+
       `Umsatz: ${format(row.rev,"currency")}<br>`+
       `Menge: ${format(row.vol,"m3")}<br>`+
       `Ø-Preis: ${format(row.price,"price")}<br>`+
       `Mengenanteil: ${format(row.share,"pctpoint")}`;
+    if(compare){
+      tip+=(yoy&&yoy.available)
+        ?worldMapYoyGauge(yoy.map[row.land],yoy.currentYear,yoy.prevYear)
+        :`<div class="wm-yoy"><div class="wm-yoy-head">Vorjahresvergleich</div><div class="wm-yoy-abs">Keine Vorjahresdaten geladen${yoy?` (${yoy.prevYear})`:""}.</div></div>`;
+    }
+    worldMapTipByLand[row.land]=tip;
   });
   const rowByLand=Object.fromEntries(rows.map(row=>[row.land,row]));
   const contextSvg=(typeof GEO_CONTEXT!=="undefined"?GEO_CONTEXT:[]).map(d=>`<path class="worldmap-context" d="${d}"/>`).join("");
@@ -4305,6 +4362,8 @@ function initWorldMap(){
   worldMapWeek.value=String(Math.max(...weeks));
   worldMapMetric.addEventListener("change",renderWorldMap);
   worldMapWeek.addEventListener("change",renderWorldMap);
+  const cmp=document.getElementById("worldMapCompare");
+  if(cmp)cmp.addEventListener("change",renderWorldMap);
   document.querySelectorAll('#worldMapMode button').forEach(btn=>btn.addEventListener("click",()=>{
     worldMapMode=btn.dataset.mode;renderWorldMap();
   }));

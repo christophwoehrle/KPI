@@ -1306,6 +1306,18 @@ body.monitor-mode .nav button[data-action="monitor"]{
   text-transform:uppercase;letter-spacing:.05em
 }
 .worldmap-mode button.active{background:var(--forest);border-color:var(--forest);color:white}
+.worldmap-compare-toggle{display:inline-flex;align-items:center;gap:7px;margin-bottom:1px;padding:8px 12px;border:1px solid #c5d0be;border-radius:2px;background:#fff;color:var(--forest);font-size:11px;font-weight:850;text-transform:uppercase;letter-spacing:.05em;cursor:pointer;user-select:none}
+.worldmap-compare-toggle input{width:15px;height:15px;accent-color:var(--streit-green);cursor:pointer}
+.worldmap-compare-toggle:has(input:checked){background:var(--forest);border-color:var(--forest);color:#fff}
+/* YTD-Vorjahresvergleich im Tooltip (Füllstand) */
+.wm-yoy{margin-top:7px;padding-top:7px;border-top:1px solid rgba(255,255,255,.25)}
+.wm-yoy-head{font-size:10px;text-transform:uppercase;letter-spacing:.05em;opacity:.85;margin-bottom:4px}
+.wm-gauge{display:flex;align-items:center;gap:8px}
+.wm-gauge-track{position:relative;flex:1;height:11px;min-width:120px;background:rgba(255,255,255,.18);border-radius:6px;overflow:hidden}
+.wm-gauge-fill{position:absolute;top:0;bottom:0;left:0;border-radius:6px}
+.wm-gauge-base{position:absolute;top:-2px;bottom:-2px;left:50%;width:2px;background:rgba(255,255,255,.7)}
+.wm-gauge-val{font-weight:900;font-size:13px;white-space:nowrap}
+.wm-yoy-abs{font-size:10px;opacity:.8;margin-top:3px}
 .worldmap-source-note{
   display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;
   color:var(--muted);font-size:12px
@@ -2185,6 +2197,10 @@ body.monitor-mode .nav button[data-action="monitor"]{
           <button type="button" data-mode="week" class="active">Anzeige-KW</button>
           <button type="button" data-mode="sum">Jahressumme</button>
         </div>
+        <label class="worldmap-compare-toggle" id="worldMapCompareToggle" title="Beim Überfahren eines Landes das YTD-Delta zum Vorjahr als Füllstand anzeigen">
+          <input type="checkbox" id="worldMapCompare">
+          <span>Vergleich zum Vorjahr</span>
+        </label>
         <div class="control local-control">
           <label>Kennzahl</label>
           <select class="local-week-select wide-select" id="worldMapMetric">
