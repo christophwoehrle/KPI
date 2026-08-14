@@ -4244,14 +4244,14 @@ function worldMapProject(lon,lat){
 function worldMapColor(ratio){
   return `hsl(96 ${42+ratio*26}% ${74-ratio*38}%)`;
 }
-/* YTD-Kennzahlen je Land bis zur Stichwoche (hergeleitet: Wochen-Umsatzmenge × Länder-M% × Ø-Preis). */
-function worldMapYtdStats(land,year,cutoffKW){
+/* YTD-Kennzahlen je Land über einen fest vorgegebenen Wochensatz (like-for-like je Jahr). */
+function worldMapYtdStats(land,year,weekSet){
   const dy=historyDashboardYear();
   const wk=(DATA.weeklyHistory&&DATA.weeklyHistory.length)?DATA.weeklyHistory:(DATA.weekly||[]);
   let vol=0,rev=0,has=false;
   wk.forEach(w=>{
     if(historyRowYear(w,dy)!==year)return;
-    const kw=w["KW Nr."];if(!Number.isFinite(kw)||kw>cutoffKW)return;
+    const kw=w["KW Nr."];if(!Number.isFinite(kw)||!weekSet.has(kw))return;
     const total=n(w["Umsatzmenge gesamt (m³)"]);if(total===null)return;
     const wprice=n(w["Ø Preis gesamt (€/m³)"]);
     const cr=(DATA.countryHistory||DATA.countryComparison||[]).find(r=>Number(r.Jahr||dy)===year&&r["KW Nr."]===kw&&r.Land===land);
@@ -4268,12 +4268,17 @@ function worldMapYoyData(){
   const active=(typeof activeDashboardYear==="function")?activeDashboardYear():dy;
   const currentYear=years.includes(active)?active:(years.length?years[years.length-1]:dy),prevYear=currentYear-1;
   const wk=(DATA.weeklyHistory&&DATA.weeklyHistory.length)?DATA.weeklyHistory:(DATA.weekly||[]);
-  const curWeeks=wk.filter(w=>historyRowYear(w,dy)===currentYear).map(w=>w["KW Nr."]).filter(Number.isFinite);
-  const cutoff=curWeeks.length?Math.max(...curWeeks):0;
-  const available=years.includes(prevYear);
+  const weeksOf=yr=>new Set(wk.filter(w=>historyRowYear(w,dy)===yr).map(w=>w["KW Nr."]).filter(Number.isFinite));
+  const curWeeksSet=weeksOf(currentYear),prevWeeksSet=weeksOf(prevYear);
+  const cutoff=curWeeksSet.size?Math.max(...curWeeksSet):0;
+  // Fairer YTD-Vergleich: nur Wochen, die in BEIDEN Jahren vorliegen (bis zur Stichwoche des laufenden Jahres).
+  const commonWeeks=[...curWeeksSet].filter(w=>w<=cutoff&&prevWeeksSet.has(w)).sort((a,b)=>a-b);
+  const commonSet=new Set(commonWeeks);
+  const available=years.includes(prevYear)&&commonWeeks.length>0;
+  const compareFrom=commonWeeks.length?commonWeeks[0]:null,compareTo=commonWeeks.length?commonWeeks[commonWeeks.length-1]:cutoff;
   const lands=Object.keys(WORLD_COUNTRIES);
   const cur={},prev={};
-  lands.forEach(l=>{cur[l]=worldMapYtdStats(l,currentYear,cutoff);prev[l]=available?worldMapYtdStats(l,prevYear,cutoff):{vol:null,rev:null,price:null};});
+  lands.forEach(l=>{cur[l]=worldMapYtdStats(l,currentYear,commonSet);prev[l]=available?worldMapYtdStats(l,prevYear,commonSet):{vol:null,rev:null,price:null};});
   const curTotal=lands.reduce((s,l)=>s+(cur[l].vol||0),0);
   const prevTotal=lands.reduce((s,l)=>s+(prev[l].vol||0),0);
   const map={};
@@ -4286,7 +4291,7 @@ function worldMapYoyData(){
       delta
     };
   });
-  return {map,currentYear,prevYear,cutoff,available};
+  return {map,currentYear,prevYear,cutoff,available,compareFrom,compareTo,weekCount:commonWeeks.length};
 }
 function worldMapYoyGauge(entry,currentYear,prevYear){
   const cur=entry.cur.vol,prev=entry.prev.vol,delta=entry.delta;
@@ -4303,8 +4308,12 @@ function worldMapYoyGauge(entry,currentYear,prevYear){
     </div>
   </div>`;
 }
-function worldMapYoyTooltip(land,entry,currentYear,prevYear,cutoff){
+function worldMapYoyTooltip(land,entry,yoy){
+  const {currentYear,prevYear,compareFrom,compareTo,weekCount}=yoy;
   const c=entry.cur,pv=entry.prev;
+  const rangeTxt=(compareFrom!=null)
+    ?`KW${String(compareFrom).padStart(2,"0")}–KW${String(compareTo).padStart(2,"0")} · ${weekCount} Woche${weekCount===1?"":"n"}`
+    :`bis KW${String(compareTo).padStart(2,"0")}`;
   const rows=[
     ["Menge",format(c.vol,"m3"),format(pv.vol,"m3")],
     ["Umsatz",format(c.rev,"currency"),format(pv.rev,"currency")],
@@ -4313,7 +4322,7 @@ function worldMapYoyTooltip(land,entry,currentYear,prevYear,cutoff){
   ];
   const table=`<table class="wm-cmp"><thead><tr><th></th><th>${currentYear}</th><th>${prevYear}</th></tr></thead><tbody>`+
     rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td></tr>`).join("")+`</tbody></table>`;
-  return `<b>${esc(land)}</b> · YTD bis KW${String(cutoff).padStart(2,"0")}${table}`+worldMapYoyGauge(entry,currentYear,prevYear);
+  return `<b>${esc(land)}</b> · YTD ${esc(rangeTxt)} (gleicher Zeitraum je Jahr)${table}`+worldMapYoyGauge(entry,currentYear,prevYear);
 }
 function renderWorldMap(){
   if(!document.getElementById("worldMapSvg"))return;
@@ -4352,7 +4361,7 @@ function renderWorldMap(){
   rows.forEach(row=>{
     let tip;
     if(compare&&yoy&&yoy.available){
-      tip=worldMapYoyTooltip(row.land,yoy.map[row.land],yoy.currentYear,yoy.prevYear,yoy.cutoff);
+      tip=worldMapYoyTooltip(row.land,yoy.map[row.land],yoy);
     }else{
       tip=`<b>${esc(row.land)}</b> · ${esc(label)}<br>`+
         `Umsatz: ${format(row.rev,"currency")}<br>`+
