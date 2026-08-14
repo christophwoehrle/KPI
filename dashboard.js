@@ -683,8 +683,9 @@ function mergeAnyImportedBundle(bundle,{persist=false}={}){
   else mergeImportedBundle(bundle,{persist});
 }
 
-function mergeImportedBundle(bundle,{persist=false}={}){
-  historyRecordBundle(bundle);   // Mehrjahres-Speicher der Historie füllen (überschreibt Jahre nicht)
+/* Baut die (einjährigen) Arbeits-Arrays für EINEN Bericht auf. Wird beim Projizieren
+   des aktiven Jahres je Bericht in der KW-Reihenfolge aufgerufen. */
+function applyBundleToWorking(bundle){
   const previousWeekly=DATA.weekly.filter(row=>row["KW Nr."]<bundle.week).sort((a,b)=>b["KW Nr."]-a["KW Nr."])[0]||null;
   DATA.weekly=DATA.weekly.filter(row=>row["KW Nr."]!==bundle.week);
   DATA.weekly.push(bundle.weekly);
@@ -705,9 +706,9 @@ function mergeImportedBundle(bundle,{persist=false}={}){
   setCountryWeek(DATA.landShares,bundle.countryShares,bundle.weekLabel);
   setCountryWeek(DATA.landPrices,bundle.countryPrices,bundle.weekLabel);
   if(Array.isArray(bundle.countryComparison)){
-    DATA.countryComparison=(DATA.countryComparison||[]).filter(row=>!(row["KW Nr."]===bundle.week&&Number(row.Jahr||bundle.year)===bundle.year));
+    DATA.countryComparison=(DATA.countryComparison||[]).filter(row=>row["KW Nr."]!==bundle.week);
     DATA.countryComparison.push(...bundle.countryComparison);
-    DATA.countryComparison.sort((a,b)=>Number(a.Jahr||0)-Number(b.Jahr||0)||a["KW Nr."]-b["KW Nr."]||String(a.Land).localeCompare(String(b.Land),"de"));
+    DATA.countryComparison.sort((a,b)=>a["KW Nr."]-b["KW Nr."]||String(a.Land).localeCompare(String(b.Land),"de"));
   }
   DATA.issues=DATA.issues.filter(issue=>{
     const source=String(issue.Quelldatei||"");
@@ -720,6 +721,31 @@ function mergeImportedBundle(bundle,{persist=false}={}){
     DATA.issues.push(makeIssue(bundle,"4-Wochenfenster","Mittel","+/- zur Vorwoche",importedOrder["+/- gemeldet"],importedOrder["+/- ggü. Vorwoche"],"Der gemeldete +/- Wert weicht von der Veränderung des berechneten 4-Wochenbestands ab."));
   }
   refreshAreaSummary();
+}
+/* Nimmt einen Bericht in die Mehrjahres-Speicher auf (ohne die Arbeits-Arrays zu bauen). */
+function recordImportedBundle(bundle){
+  historyRecordBundle(bundle);                                  // Historie (weekly/sales)
+  DATA.countryHistory=(DATA.countryHistory||[]).filter(r=>!(r["KW Nr."]===bundle.week&&Number(r.Jahr||bundle.year)===Number(bundle.year)));
+  if(Array.isArray(bundle.countryComparison))DATA.countryHistory.push(...bundle.countryComparison);
+  DATA._weeklyBundles=(DATA._weeklyBundles||[]).filter(b=>!(b.week===bundle.week&&Number(b.year)===Number(bundle.year)));
+  DATA._weeklyBundles.push(bundle);
+}
+/* Stellt alle Fenster auf EIN Jahr um: Arbeits-Arrays aus den Berichten dieses Jahres neu aufbauen. */
+function projectDashboardYear(year){
+  const y=Number(year);
+  DATA.weekly=[];DATA.salesBreakdown=[];DATA.productionCurrent=[];DATA.ytd=[];
+  DATA.orderWindow=[];DATA.drying=[];DATA.shipments=[];DATA.countryComparison=[];DATA.issues=[];DATA.landShares=[];DATA.landPrices=[];
+  (DATA._weeklyBundles||[]).filter(b=>Number(b.year)===y).sort((a,b)=>a.week-b.week).forEach(applyBundleToWorking);
+  dashboardDisplayYear=y;
+}
+function projectActiveOrLatestYear(){
+  const years=weeklyYears();
+  if(!years.length){projectDashboardYear(historyDashboardYear());return;}
+  const y=(dashboardDisplayYear!=null&&years.includes(dashboardDisplayYear))?dashboardDisplayYear:years[years.length-1];
+  projectDashboardYear(y);
+}
+function mergeImportedBundle(bundle,{persist=false}={}){
+  recordImportedBundle(bundle);
   if(persist)persistImportedBundle(bundle);
 }
 function applyStoredImports(){
@@ -731,6 +757,7 @@ function applyStoredImports(){
       try{mergeAnyImportedBundle(bundle,{persist:false});ok++;}
       catch(error){failed.push(`${bundle.weekLabel||"KW?"}/${bundle.year||"?"}`);console.warn("Import konnte nicht angewandt werden",bundle&&bundle.fileName,error);}
     });
+    projectActiveOrLatestYear();   // Arbeits-Arrays aus dem (aktiven/neuesten) Jahr aufbauen
     if(ok||failed.length)setTimeout(()=>setUploadStatus(
       failed.length?`${ok} gespeicherte Importe geladen; ${failed.length} fehlerhaft (${failed.join(", ")}).`:`${ok} gespeicherte Excel-Importe wurden geladen.`,
       failed.length?"error":"success"),0);
@@ -918,9 +945,13 @@ async function importExcelFiles(fileList,options={}){
   const persistResult=persistImportedBundlesBatch(persistQueue);
 
   if(successes.length){
+    // Auf das neueste geladene Jahr projizieren (Header-Jahr wählt anschließend um)
+    const years=weeklyYears();
+    projectDashboardYear(years.length?years[years.length-1]:historyDashboardYear());
     rebuildWeekSelectors(true);
     rebuildSawlineSelectors(importedSawlineWeeks.length?Math.max(...importedSawlineWeeks):null);
-    if(importedWeeks.length)setGlobalDisplayWeek(Math.max(...importedWeeks),{showHint:false});
+    const wks=availableDashboardWeeks();
+    if(wks.length)setGlobalDisplayWeek(Math.max(...wks),{showHint:false});
     else updateAll();
     refreshHistoryControls();   // Historie-Auswahllisten (Jahr/KW/Datensatz) an neue Daten anpassen
     renderKpiWorkspace();
@@ -1987,7 +2018,9 @@ function weeklyYearOf(row){
   return m?Number(m[1]):2026;
 }
 function weeklyYears(){
-  return [...new Set(DATA.weekly.map(weeklyYearOf).filter(Number.isFinite))].sort((a,b)=>a-b);
+  // Jahre aus dem Mehrjahres-Speicher (alle hochgeladenen Jahre), Fallback: Arbeits-Array.
+  const src=(DATA.weeklyHistory&&DATA.weeklyHistory.length)?DATA.weeklyHistory:(DATA.weekly||[]);
+  return [...new Set(src.map(weeklyYearOf).filter(Number.isFinite))].sort((a,b)=>a-b);
 }
 function activeDashboardYear(){
   const years=weeklyYears();
@@ -2076,7 +2109,8 @@ function setGlobalDisplayYear(year){
   const years=weeklyYears();
   const y=Number(year);
   if(!years.includes(y))return;
-  dashboardDisplayYear=y;
+  projectDashboardYear(y);   // alle Fenster auf das gewählte Jahr umstellen
+  refreshStatisticsAfterDataChange();
   const weeks=availableDashboardWeeks();
   const target=weeks.length?Math.max(...weeks):null;
   populateGlobalWeekScroller(target);
@@ -4220,7 +4254,7 @@ function worldMapYtdStats(land,year,cutoffKW){
     const kw=w["KW Nr."];if(!Number.isFinite(kw)||kw>cutoffKW)return;
     const total=n(w["Umsatzmenge gesamt (m³)"]);if(total===null)return;
     const wprice=n(w["Ø Preis gesamt (€/m³)"]);
-    const cr=(DATA.countryComparison||[]).find(r=>Number(r.Jahr||dy)===year&&r["KW Nr."]===kw&&r.Land===land);
+    const cr=(DATA.countryHistory||DATA.countryComparison||[]).find(r=>Number(r.Jahr||dy)===year&&r["KW Nr."]===kw&&r.Land===land);
     const mp=n(cr?.["M%"]);if(mp===null)return;
     const v=total*mp/100;
     const price=n(cr?.["Ø-Preis Gesamt"])??wprice??null;
@@ -4230,8 +4264,9 @@ function worldMapYtdStats(land,year,cutoffKW){
 }
 function worldMapYoyData(){
   const dy=historyDashboardYear();
-  const years=[...new Set((DATA.countryComparison||[]).map(r=>Number(r.Jahr||dy)))].filter(Number.isFinite).sort((a,b)=>a-b);
-  const currentYear=years.length?years[years.length-1]:dy,prevYear=currentYear-1;
+  const years=[...new Set((DATA.countryHistory||DATA.countryComparison||[]).map(r=>Number(r.Jahr||dy)))].filter(Number.isFinite).sort((a,b)=>a-b);
+  const active=(typeof activeDashboardYear==="function")?activeDashboardYear():dy;
+  const currentYear=years.includes(active)?active:(years.length?years[years.length-1]:dy),prevYear=currentYear-1;
   const wk=(DATA.weeklyHistory&&DATA.weeklyHistory.length)?DATA.weeklyHistory:(DATA.weekly||[]);
   const curWeeks=wk.filter(w=>historyRowYear(w,dy)===currentYear).map(w=>w["KW Nr."]).filter(Number.isFinite);
   const cutoff=curWeeks.length?Math.max(...curWeeks):0;
