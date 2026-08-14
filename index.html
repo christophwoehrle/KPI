@@ -1318,6 +1318,17 @@ body.monitor-mode .nav button[data-action="monitor"]{
 .wm-gauge-base{position:absolute;top:-2px;bottom:-2px;left:50%;width:2px;background:rgba(255,255,255,.7)}
 .wm-gauge-val{font-weight:900;font-size:13px;white-space:nowrap}
 .wm-yoy-abs{font-size:10px;opacity:.8;margin-top:3px}
+/* Infrastruktur-Tabelle */
+.infra-table{min-width:900px;font-size:12px}
+.infra-table th{white-space:nowrap}
+.infra-table th.infra-kpi{writing-mode:vertical-rl;transform:rotate(180deg);text-align:left;height:120px;padding:8px 4px;font-weight:700;background:var(--navy)}
+.infra-table td.infra-check{text-align:center;font-weight:900;font-size:14px}
+.infra-table td.infra-file{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;white-space:nowrap}
+.infra-table td.infra-yr,.infra-table td.infra-kw{font-weight:800;color:var(--forest);text-align:center}
+.infra-ok{color:#2f9e44}
+.infra-bad{color:#d64545}
+.infra-table tbody tr.infra-year-start td{border-top:2px solid var(--streit-green)}
+.infra-empty{padding:22px;text-align:center;color:var(--muted)}
 .wm-cmp{border-collapse:collapse;margin:6px 0 3px;font-size:11px;min-width:220px;border-radius:5px;overflow:hidden}
 .wm-cmp th,.wm-cmp td{padding:3px 8px;text-align:right;white-space:nowrap;position:static}
 .wm-cmp th:first-child,.wm-cmp td:first-child{text-align:left;font-weight:600;padding-left:8px}
@@ -1595,6 +1606,7 @@ body.monitor-mode .nav button[data-action="monitor"]{
       <button data-view="annual">Jahres-Summen</button>
       <button data-view="statistics">Statistik & Vergleich</button>
       <button data-view="quality">Datenqualität</button>
+      <button data-view="infrastructure">Infrastruktur</button>
       <button data-view="land">Land</button>
       <button data-view="countryCompare">Ländervergleich</button>
       <button data-view="worldmap">Weltkarte</button>
@@ -2038,6 +2050,23 @@ body.monitor-mode .nav button[data-action="monitor"]{
     </div>
   </section>
 
+  <section class="view" id="infrastructure">
+    <div class="section-head">
+      <div>
+        <h2>Infrastruktur · Datenverfügbarkeit</h2>
+        <p>Alle hochgeladenen Excel-Dateien mit Prüfung, ob je Kennzahl sauber ausgelesene Werte vorliegen (✓) oder fehlen (✗). Sortierung: Jahr, dann Kalenderwoche aufsteigend.</p>
+      </div>
+      <span class="chip" id="infraScope"></span>
+    </div>
+    <div class="card">
+      <div class="card-title-row"><div><h3>Wochenberichte (KW-XX-20XX.xlsx)</h3><div class="card-sub" id="infraWeeklySub"></div></div></div>
+      <div class="table-wrap"><table id="infraWeeklyTable" class="infra-table"></table></div>
+    </div>
+    <div class="card" id="infraSawlineCard">
+      <div class="card-title-row"><div><h3>Sägelinien-Protokolle (Sh_XX_YY.xlsx)</h3><div class="card-sub" id="infraSawlineSub"></div></div></div>
+      <div class="table-wrap"><table id="infraSawlineTable" class="infra-table"></table></div>
+    </div>
+  </section>
 
   <section class="view" id="land">
     <div class="section-head">

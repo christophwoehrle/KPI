@@ -972,8 +972,8 @@ async function importExcelFiles(fileList,options={}){
 }
 
 
-const TAB_ORDER_STORAGE_KEY="kwDashboardTabOrderV3";
-const DEFAULT_TAB_ORDER=["countryPoints","assistant","history","sales","production","sawline","overview","trends","annual","statistics","quality","land","countryCompare","worldmap","details","builder"];
+const TAB_ORDER_STORAGE_KEY="kwDashboardTabOrderV4";
+const DEFAULT_TAB_ORDER=["countryPoints","assistant","history","sales","production","sawline","overview","trends","annual","statistics","quality","infrastructure","land","countryCompare","worldmap","details","builder"];
 let draggedTabButton=null;
 let suppressNextTabClick=false;
 let touchTabTimer=null;
@@ -5030,11 +5030,86 @@ function renderHistory(){
   document.getElementById("historyTableSub").textContent=`${rangeLabel} · ${selected.length} Kennzahlen · Quelle: ${ds.label}`;
 }
 
+/* ============================= Infrastruktur · Datenverfügbarkeit ============================= */
+function infraHasKey(obj,key){return !!obj&&n(obj[key])!==null;}
+const INFRA_WEEKLY_KPIS=[
+  ["Umsatz je Produkt",b=>(b.salesBreakdown||[]).some(r=>n(r["EUR (€/m³)"])!==null)],
+  ["Ø-Preis gesamt",b=>infraHasKey(b.weekly,"Ø Preis gesamt (€/m³)")],
+  ["Umsatzmenge",b=>infraHasKey(b.weekly,"Umsatzmenge gesamt (m³)")],
+  ["Deckungsbeitrag",b=>infraHasKey(b.weekly,"DB Netto (€)")&&infraHasKey(b.weekly,"DB (€/m³)")],
+  ["Länderanteile",b=>(b.countryComparison||[]).some(r=>n(r["M%"])!==null)],
+  ["Länderpreise",b=>(b.countryComparison||[]).some(r=>n(r["Ø-Preis Gesamt"])!==null)],
+  ["Veredelung",b=>n(b.refinement&&b.refinement.Trocknung&&b.refinement.Trocknung.total)!==null],
+  ["Produktion",b=>n(b.production&&b.production["Gesamt Fm"]&&b.production["Gesamt Fm"].current)!==null],
+  ["A-Eingang",b=>n(b.incoming&&b.incoming.total)!==null],
+  ["Auftragsbestand",b=>infraHasKey(b.weekly,"Auftragsbestand 8W gesamt (m³)")],
+  ["Lagerbestand",b=>infraHasKey(b.weekly,"Lagerbestand (m³)")],
+  ["Verladungen",b=>infraHasKey(b.weekly,"Verladungen gesamt")]
+];
+function infraCheckCell(ok){return `<td class="infra-check ${ok?"infra-ok":"infra-bad"}" title="${ok?"verfügbar":"fehlt"}">${ok?"✓":"✗"}</td>`;}
+function renderInfrastructure(){
+  const weeklyTable=document.getElementById("infraWeeklyTable");
+  if(!weeklyTable)return;
+  // --- Wochenberichte ---
+  const bundles=[...(DATA._weeklyBundles||[])].sort((a,b)=>Number(a.year)-Number(b.year)||Number(a.week)-Number(b.week));
+  const kpiHead=INFRA_WEEKLY_KPIS.map(k=>`<th class="infra-kpi">${esc(k[0])}</th>`).join("");
+  if(!bundles.length){
+    weeklyTable.innerHTML=`<tbody><tr><td class="infra-empty">Noch keine Wochenberichte hochgeladen.</td></tr></tbody>`;
+    document.getElementById("infraWeeklySub").textContent="Keine Wochenberichte hochgeladen.";
+  }else{
+    let prevYear=null;
+    const body=bundles.map(b=>{
+      const yearStart=Number(b.year)!==prevYear;prevYear=Number(b.year);
+      const checks=INFRA_WEEKLY_KPIS.map(k=>{let ok=false;try{ok=!!k[1](b);}catch(e){ok=false;}return infraCheckCell(ok);}).join("");
+      return `<tr class="${yearStart?"infra-year-start":""}">
+        <td class="infra-yr">${esc(String(b.year))}</td>
+        <td class="infra-kw">KW${String(b.week).padStart(2,"0")}</td>
+        <td class="infra-file">${esc(b.fileName||`KW-${String(b.week).padStart(2,"0")}-${b.year}.xlsx`)}</td>
+        ${checks}</tr>`;
+    }).join("");
+    weeklyTable.innerHTML=`<thead><tr><th>Jahr</th><th>KW</th><th>Datei</th>${kpiHead}</tr></thead><tbody>${body}</tbody>`;
+    const fullyClean=bundles.filter(b=>INFRA_WEEKLY_KPIS.every(k=>{try{return !!k[1](b);}catch(e){return false;}})).length;
+    document.getElementById("infraWeeklySub").textContent=`${bundles.length} Datei(en) · ${fullyClean} vollständig sauber · ${INFRA_WEEKLY_KPIS.length} Kennzahlen geprüft`;
+  }
+  // --- Sägelinie ---
+  const sawTable=document.getElementById("infraSawlineTable"),sawCard=document.getElementById("infraSawlineCard");
+  const saw=DATA.sawlineReports||[];
+  if(!saw.length){
+    if(sawCard)sawCard.style.display="none";
+  }else{
+    if(sawCard)sawCard.style.display="";
+    // Kennzahlen (Zeilen) in stabiler Reihenfolge
+    const kpiOrder=[...new Map(saw.map(r=>[r.KPI,r.Zeile])).entries()].sort((a,b)=>Number(a[1])-Number(b[1])).map(e=>e[0]);
+    // Dateien gruppieren (Jahr, KW, Quelldatei)
+    const files=new Map();
+    saw.forEach(r=>{
+      const key=`${r.Jahr}|${r["KW Nr."]}|${r.Quelldatei}`;
+      if(!files.has(key))files.set(key,{year:Number(r.Jahr),week:Number(r["KW Nr."]),file:r.Quelldatei,byKpi:{}});
+      files.get(key).byKpi[r.KPI]=r.Summe;
+    });
+    const rows=[...files.values()].sort((a,b)=>a.year-b.year||a.week-b.week);
+    const sawHead=kpiOrder.map(k=>`<th class="infra-kpi">${esc(k)}</th>`).join("");
+    let prevY=null;
+    const body=rows.map(f=>{
+      const yearStart=f.year!==prevY;prevY=f.year;
+      const checks=kpiOrder.map(k=>infraCheckCell(n(f.byKpi[k])!==null)).join("");
+      return `<tr class="${yearStart?"infra-year-start":""}">
+        <td class="infra-yr">${esc(String(f.year))}</td>
+        <td class="infra-kw">KW${String(f.week).padStart(2,"0")}</td>
+        <td class="infra-file">${esc(f.file||"")}</td>
+        ${checks}</tr>`;
+    }).join("");
+    sawTable.innerHTML=`<thead><tr><th>Jahr</th><th>KW</th><th>Datei</th>${sawHead}</tr></thead><tbody>${body}</tbody>`;
+    document.getElementById("infraSawlineSub").textContent=`${rows.length} Datei(en) · ${kpiOrder.length} Kennzahlen geprüft`;
+  }
+  const scope=document.getElementById("infraScope");
+  if(scope)scope.textContent=`${bundles.length} Wochenberichte · ${new Set(saw.map(r=>`${r.Jahr}|${r["KW Nr."]}`)).size} Sägelinien-Wochen`;
+}
 function updateAll(){
   renderCountryPoints();
   if(typeof renderAssistantStatic==="function"&&document.getElementById("assistantExamples"))renderAssistantStatic();
   renderSales();renderProduction();renderSawline();renderKpis();renderOverviewCharts();renderTrends();renderAnnual();renderStatisticsBoard();renderQuality();
-  renderLand();renderCountryComparison();renderWorldMap();renderDetails();renderHistory();
+  renderLand();renderCountryComparison();renderWorldMap();renderDetails();renderHistory();renderInfrastructure();
   renderKpiWorkspace();
   applyClosableStandardWindows();
   const hint=document.getElementById("emptyDataHint");
