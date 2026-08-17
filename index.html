@@ -1592,6 +1592,7 @@ body.monitor-mode .nav button[data-action="monitor"]{
         <button class="btn" id="fullscreenBtn">Vollbild</button>
         <button class="btn" id="csvBtn">Auswahl als CSV</button>
         <button class="btn" id="pdfBtn" title="Aktuelle Ansicht als PDF speichern (Druckdialog → Als PDF sichern)">Als PDF</button>
+        <button class="btn" id="toggleQuestionBtn" type="button" aria-pressed="true" title="Modul „Frage an das Dashboard“ ein-/ausblenden">Frage ausblenden</button>
       </div>
     </div>
     <nav class="nav" id="nav">
@@ -1615,7 +1616,7 @@ body.monitor-mode .nav button[data-action="monitor"]{
       <button data-action="monitor">Alle Tabs parallel</button>
     </nav>
 
-    <div class="dashboard-question-panel">
+    <div class="dashboard-question-panel" id="dashboardQuestionPanel">
       <div class="dashboard-question-row">
         <div class="dashboard-question-icon" aria-hidden="true">?</div>
         <div class="dashboard-question-field">

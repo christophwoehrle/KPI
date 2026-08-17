@@ -1930,6 +1930,7 @@ function initControls(){
   csvBtn.addEventListener("click",downloadCSV);
   const pdfBtn=document.getElementById("pdfBtn");
   if(pdfBtn)pdfBtn.addEventListener("click",exportDashboardPdf);
+  initQuestionToggle();
   dashboardQuestionBtn.addEventListener("click",processDashboardQuestion);
   dashboardQuestionInput.addEventListener("keydown",event=>{
     if(event.key==="Enter"){
@@ -4042,6 +4043,26 @@ function downloadCSV(){
 }
 
 /* PDF-Export: aktive Ansicht über den Druckdialog als PDF sichern (offline, ohne externe Bibliothek). */
+const QUESTION_PANEL_KEY="kwDashboardQuestionPanelHidden";
+function setQuestionPanelHidden(hidden){
+  const panel=document.getElementById("dashboardQuestionPanel");
+  const btn=document.getElementById("toggleQuestionBtn");
+  if(panel)panel.hidden=!!hidden;
+  if(btn){
+    btn.textContent=hidden?"Frage einblenden":"Frage ausblenden";
+    btn.setAttribute("aria-pressed",hidden?"false":"true");
+  }
+  storageSet(QUESTION_PANEL_KEY,hidden?"1":"0");
+}
+function initQuestionToggle(){
+  const btn=document.getElementById("toggleQuestionBtn");
+  if(!btn)return;
+  setQuestionPanelHidden(storageGet(QUESTION_PANEL_KEY)==="1");
+  btn.addEventListener("click",()=>{
+    const panel=document.getElementById("dashboardQuestionPanel");
+    setQuestionPanelHidden(!(panel&&panel.hidden));
+  });
+}
 function exportDashboardPdf(){
   const activeView=document.querySelector(".view.active");
   const activeTab=nav.querySelector("button.active[data-view]");
