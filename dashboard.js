@@ -2369,7 +2369,11 @@ function lineChart(id,labels,series,opt={}){
     svg.append(svgEl("line",{x1:m.l,y1:yy,x2:W-m.r,y2:yy,stroke:"#e5ebf1","stroke-width":1}));
     svg.append(svgEl("text",{x:m.l-9,y:yy+4,"text-anchor":"end",fill:"#718096","font-size":11},opt.tick?opt.tick(val):fmtNum.format(val)));
   }
+  // Achsenbeschriftung ausdünnen, damit die Labels bei vielen Werten nicht überlappen
+  const maxLabels=opt.maxLabels||14;
+  const step=Math.max(1,Math.ceil(labels.length/maxLabels));
   labels.forEach((lab,i)=>{
+    if(step>1&&i%step!==0&&i!==labels.length-1)return;
     svg.append(svgEl("text",{x:x(i),y:H-19,"text-anchor":"middle",fill:"#718096","font-size":11},lab));
   });
   series.forEach((s,si)=>{
@@ -4897,6 +4901,26 @@ function refreshHistoryControls(){
 function initHistory(){
   const dsSel=document.getElementById("historyDataset");
   if(!dsSel)return;
+  // Listener einmalig anhängen – unabhängig davon, ob schon Daten geladen sind
+  // (die Selects existieren immer; ihre Optionen werden später befüllt).
+  ["historyDataset","historyYearFrom","historyYearTo","historyFrom","historyTo"].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el)el.addEventListener("change",()=>onHistoryControlChange(id));
+  });
+  const resSel=document.getElementById("historyResolution");
+  if(resSel)resSel.addEventListener("change",renderHistory);
+  const allBtn=document.getElementById("historyAll"),noneBtn=document.getElementById("historyNone");
+  if(allBtn)allBtn.addEventListener("click",()=>{
+    const d=historyDatasetById(document.getElementById("historyDataset").value);
+    if(!d)return;
+    historySelected=new Set(historyArticles(d).map(a=>a.zeile));renderHistoryArticleChips(d);renderHistory();
+  });
+  if(noneBtn)noneBtn.addEventListener("click",()=>{
+    const d=historyDatasetById(document.getElementById("historyDataset").value);
+    if(!d)return;
+    historySelected=new Set();renderHistoryArticleChips(d);renderHistory();
+  });
+  // Datenabhängige Erstbefüllung
   historyResetDatasets();
   const datasets=historyDatasets();
   historyFillSelect(dsSel,datasets.map(d=>({value:d.id,label:d.label})));
@@ -4904,27 +4928,12 @@ function initHistory(){
   if(!ds){renderHistory();return;}
   historySelected=new Set(historyDefaultSelection(ds));
   renderHistoryArticleChips(ds);
-  // Jahr von / bis (fortlaufender Zeitraum über Jahresgrenzen)
   const years=historyYears(ds);
   historyFillSelect(document.getElementById("historyYearFrom"),years.map(y=>({value:y,label:String(y)})),years[0]);
   historyFillSelect(document.getElementById("historyYearTo"),years.map(y=>({value:y,label:String(y)})),years[years.length-1]);
-  // KW von / bis
   const weeks=historyWeeks(ds);
   historyFillSelect(document.getElementById("historyFrom"),weeks.map(w=>({value:w,label:historyKwLabel(w)})),weeks[0]);
   historyFillSelect(document.getElementById("historyTo"),weeks.map(w=>({value:w,label:historyKwLabel(w)})),weeks[weeks.length-1]);
-  ["historyDataset","historyYearFrom","historyYearTo","historyFrom","historyTo"].forEach(id=>{
-    const el=document.getElementById(id);
-    if(el)el.addEventListener("change",()=>onHistoryControlChange(id));
-  });
-  const allBtn=document.getElementById("historyAll"),noneBtn=document.getElementById("historyNone");
-  if(allBtn)allBtn.addEventListener("click",()=>{
-    const d=historyDatasetById(document.getElementById("historyDataset").value);
-    historySelected=new Set(historyArticles(d).map(a=>a.zeile));renderHistoryArticleChips(d);renderHistory();
-  });
-  if(noneBtn)noneBtn.addEventListener("click",()=>{
-    const d=historyDatasetById(document.getElementById("historyDataset").value);
-    historySelected=new Set();renderHistoryArticleChips(d);renderHistory();
-  });
 }
 function onHistoryControlChange(changed){
   const ds=historyDatasetById(document.getElementById("historyDataset").value);
@@ -4973,28 +4982,46 @@ function renderHistory(){
   const kTo=Number(document.getElementById("historyTo").value);
   const periods=historyPeriods(ds,yFrom,kFrom,yTo,kTo);
   const multiYear=yFrom!==yTo;
-  const periodLabel=p=>multiYear?historyKwLabel(p.kw)+"·"+String(p.year).slice(2):historyKwLabel(p.kw);
-  const labels=periods.map(periodLabel);
   const arts=historyArticles(ds);
   const selected=arts.filter(a=>historySelected.has(a.zeile));
   const valOf=(zeile,year,kw)=>ds.valueAt(zeile,year,kw);
   const rangeLabel=multiYear
     ? `${historyKwLabel(kFrom)}/${yFrom} – ${historyKwLabel(kTo)}/${yTo}`
     : `${historyKwLabel(kFrom)}–${historyKwLabel(kTo)} ${yFrom}`;
+
+  // Auflösung: Kalenderwochen oder Quartale (KW zu Q1–Q4 zusammengefasst)
+  const resolution=(document.getElementById("historyResolution")||{}).value||"week";
+  const isSumType=type=>new Set(["m3","fm","lfm","pieces","minutes","currency"]).has(type);
+  const quarterOf=kw=>Math.min(4,Math.max(1,Math.ceil(kw/13)));
+  let points,pointLabel,pointValue,axisLabel,resLabel;
+  if(resolution==="quarter"){
+    const buckets=[],bmap=new Map();
+    periods.forEach(p=>{const q=quarterOf(p.kw),key=p.year+"-"+q;if(!bmap.has(key)){const bk={year:p.year,quarter:q,weeks:[]};bmap.set(key,bk);buckets.push(bk);}bmap.get(key).weeks.push(p);});
+    points=buckets;
+    pointLabel=b=>multiYear?`Q${b.quarter}/${String(b.year).slice(2)}`:`Q${b.quarter}`;
+    pointValue=(art,b)=>{const vals=b.weeks.map(p=>valOf(art.zeile,p.year,p.kw)).filter(v=>v!==null&&Number.isFinite(v));if(!vals.length)return null;const s=vals.reduce((a,c)=>a+c,0);return isSumType(art.type)?s:s/vals.length;};
+    axisLabel="Quartal";resLabel="Quartale";
+  }else{
+    points=periods;
+    pointLabel=p=>multiYear?historyKwLabel(p.kw)+"·"+String(p.year).slice(2):historyKwLabel(p.kw);
+    pointValue=(art,p)=>valOf(art.zeile,p.year,p.kw);
+    axisLabel="KW";resLabel="KW";
+  }
+  const labels=points.map(pointLabel);
   // Scope-Chip
   if(scopeChip){
-    scopeChip.textContent=`${selected.length} Kennzahlen · ${multiYear?`${yFrom}–${yTo}`:yFrom} · ${periods.length} KW`;
+    scopeChip.textContent=`${selected.length} Kennzahlen · ${multiYear?`${yFrom}–${yTo}`:yFrom} · ${points.length} ${resLabel}`;
   }
-  if(!selected.length||!periods.length){
+  if(!selected.length||!points.length){
     stack.innerHTML=`<div class="history-stack-empty">${selected.length?"Kein gültiger Zeitraum gewählt.":"Bitte oben mindestens eine Kennzahl auswählen."}</div>`;
     kpiHost.innerHTML="";tableHost.innerHTML="";
     document.getElementById("historyTableSub").textContent="";
     return;
   }
-  // KPI je Kennzahl: aktueller Wert (letzte Periode) + Veränderung über den Zeitraum
+  // KPI je Kennzahl: aktueller Wert (letzter Punkt) + Veränderung über den Zeitraum
   kpiHost.innerHTML=selected.map(a=>{
     const meta0=historyArticleMeta(ds,a.zeile);
-    const vals=periods.map(p=>valOf(a.zeile,p.year,p.kw));
+    const vals=points.map(pt=>pointValue(a,pt));
     const firstV=vals.find(v=>v!==null),lastV=[...vals].reverse().find(v=>v!==null);
     let meta=rangeLabel;
     if(firstV!=null&&lastV!=null&&firstV!==0){
@@ -5011,12 +5038,12 @@ function renderHistory(){
     const card=document.createElement("div");
     card.className="card";
     card.innerHTML=`<div class="card-title-row">
-        <div><h3>${esc(a.name)}</h3><div class="card-sub">${esc(rangeLabel)}${am.unit?" · "+esc(am.unit):""}</div></div>
+        <div><h3>${esc(a.name)}</h3><div class="card-sub">${esc(rangeLabel)}${am.unit?" · "+esc(am.unit):""}${resolution==="quarter"?" · Quartalswerte":""}</div></div>
         <span class="chip" data-trend="${a.zeile}"></span>
       </div>
       <div class="chart" id="${chartId}"></div>`;
     stack.append(card);
-    const series=[{name:a.name,color:historyColorForZeile(ds,a.zeile),values:periods.map(p=>valOf(a.zeile,p.year,p.kw)),format:v=>format(v,am.type)}];
+    const series=[{name:a.name,color:historyColorForZeile(ds,a.zeile),values:points.map(pt=>pointValue(a,pt)),format:v=>format(v,am.type)}];
     lineChart(chartId,labels,series,{tick:v=>fmt0.format(v)});
     // Trend-Chip
     const vals=series[0].values;
@@ -5028,15 +5055,16 @@ function renderHistory(){
       chip.style.color=d>=0?"#2f7d32":"#b23b3b";
     }
   });
-  // Vergleichstabelle: Periode × Kennzahl (je Kennzahl eigene Einheit)
+  // Vergleichstabelle: Punkt × Kennzahl (je Kennzahl eigene Einheit)
   const selMeta=selected.map(a=>historyArticleMeta(ds,a.zeile));
-  const head=`<thead><tr><th>KW</th>${multiYear?"<th>Jahr</th>":""}${selected.map(a=>`<th>${esc(a.name)}</th>`).join("")}</tr></thead>`;
-  const body=periods.map(p=>{
-    const cells=selected.map((a,i)=>{const v=valOf(a.zeile,p.year,p.kw);return `<td>${v==null?"–":format(v,selMeta[i].type)}</td>`;}).join("");
-    return `<tr><td><b>${historyKwLabel(p.kw)}</b></td>${multiYear?`<td>${p.year}</td>`:""}${cells}</tr>`;
+  const head=`<thead><tr><th>${axisLabel}</th>${multiYear?"<th>Jahr</th>":""}${selected.map(a=>`<th>${esc(a.name)}</th>`).join("")}</tr></thead>`;
+  const body=points.map(pt=>{
+    const cells=selected.map((a,i)=>{const v=pointValue(a,pt);return `<td>${v==null?"–":format(v,selMeta[i].type)}</td>`;}).join("");
+    const rowLabel=resolution==="quarter"?`Q${pt.quarter}`:historyKwLabel(pt.kw);
+    return `<tr><td><b>${rowLabel}</b></td>${multiYear?`<td>${pt.year}</td>`:""}${cells}</tr>`;
   }).join("");
   tableHost.innerHTML=head+"<tbody>"+body+"</tbody>";
-  document.getElementById("historyTableSub").textContent=`${rangeLabel} · ${selected.length} Kennzahlen · Quelle: ${ds.label}`;
+  document.getElementById("historyTableSub").textContent=`${rangeLabel} · ${selected.length} Kennzahlen · ${resolution==="quarter"?"Quartale (Ø bei Preisen, Summe bei Mengen)":"Kalenderwochen"} · Quelle: ${ds.label}`;
 }
 
 /* ============================= Infrastruktur · Datenverfügbarkeit ============================= */
