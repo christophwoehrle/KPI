@@ -1836,6 +1836,13 @@ function initControls(){
   displayWeek.addEventListener("change",()=>setGlobalDisplayWeek(Number(displayWeek.value)));
   const displayYearSel=document.getElementById("displayYear");
   if(displayYearSel)displayYearSel.addEventListener("change",()=>setGlobalDisplayYear(displayYearSel.value));
+  const displayWindowSel=document.getElementById("displayWindow");
+  if(displayWindowSel){
+    const stored=storageGet(WINDOW_STORAGE_KEY);
+    if(stored&&WINDOW_LABELS[stored])dashboardWindow=stored;
+    displayWindowSel.value=dashboardWindow;
+    displayWindowSel.addEventListener("change",()=>setGlobalDisplayWindow(displayWindowSel.value));
+  }
   previousWeekBtn.addEventListener("click",()=>stepGlobalDisplayWeek(-1));
   nextWeekBtn.addEventListener("click",()=>stepGlobalDisplayWeek(1));
   weekScroller.addEventListener("wheel",event=>{
@@ -2012,6 +2019,65 @@ function initControls(){
 }
 
 const kpiWeekSelection={};
+
+/* ---------- Globales Zeitfenster (Kopf: „Zeitraum") ----------
+   current = nur die (aktuellste/gewählte) KW; 4/13/26 = die letzten N Wochen
+   bis zur Anker-KW; ytd = alle Wochen bis zur Anker-KW. Gilt für die
+   Wertreiter Übersicht, Umsatz, Einkauf, Produktion und Sägelinie. */
+const WINDOW_STORAGE_KEY="kwDashboardWindow";
+let dashboardWindow="current";
+const WINDOW_LABELS={current:"Aktuellste KW","4":"4 Wochen","13":"3 Monate","26":"6 Monate",ytd:"YTD"};
+function dashboardWindowLabel(){return WINDOW_LABELS[dashboardWindow]||"Aktuellste KW";}
+function windowIsSumType(type){return !["price","pricefm","percent","pctpoint"].includes(type);}
+/* Wochen des aktiven Fensters, verankert an endWeek (Standard: aktuellste KW). */
+function dashboardWindowWeeks(endWeek,availableWeeks){
+  const all=(availableWeeks&&availableWeeks.length?availableWeeks:availableDashboardWeeks()).slice().sort((a,b)=>a-b);
+  if(!all.length)return [];
+  const anchor=(endWeek!=null&&all.includes(Number(endWeek)))?Number(endWeek):Math.max(...all);
+  const upTo=all.filter(w=>w<=anchor);
+  if(dashboardWindow==="current")return upTo.slice(-1);
+  if(dashboardWindow==="ytd")return upTo;
+  const count=Number(dashboardWindow)||1;
+  return upTo.slice(-count);
+}
+function windowScopeText(weeks){
+  if(!weeks||!weeks.length)return "keine Woche";
+  if(weeks.length===1)return `KW${weeks[0]}`;
+  return `KW${weeks[0]}–KW${weeks[weeks.length-1]} · ${weeks.length} Wochen`;
+}
+function windowAggregate(values,type){
+  const valid=values.filter(v=>v!==null&&v!==undefined&&Number.isFinite(Number(v))).map(Number);
+  if(!valid.length)return null;
+  const sum=valid.reduce((a,b)=>a+b,0);
+  return windowIsSumType(type)?sum:sum/valid.length;
+}
+/* Aggregiert ein Feld aus DATA.weekly über die Fensterwochen (Summe bzw. Ø je Typ). */
+function windowWeeklyField(field,weeks,type){
+  const set=new Set(weeks.map(Number));
+  return windowAggregate(DATA.weekly.filter(r=>set.has(Number(r["KW Nr."]))).map(r=>n(r[field])),type);
+}
+/* Aggregationsart je Kennzahl: Preise/Quoten = Ø, Bestände/Lager = Endwert, sonst Summe. */
+function windowAggMode(field,type){
+  if(["price","pricefm","percent","pctpoint"].includes(type))return "avg";
+  if(/bestand|lager/i.test(String(field)))return "last";
+  return "sum";
+}
+function windowWeeklyFieldMode(field,weeks,mode){
+  const set=new Set(weeks.map(Number));
+  const rows=DATA.weekly.filter(r=>set.has(Number(r["KW Nr."]))).sort((a,b)=>a["KW Nr."]-b["KW Nr."]);
+  const vals=rows.map(r=>n(r[field])).filter(v=>v!==null);
+  if(!vals.length)return null;
+  if(mode==="avg")return vals.reduce((a,b)=>a+b,0)/vals.length;
+  if(mode==="last")return n(rows[rows.length-1][field]);
+  return vals.reduce((a,b)=>a+b,0);
+}
+const WINDOW_TAG={sum:"Σ",avg:"Ø",last:"Stand"};
+const WINDOW_TAG_TITLE={sum:"Summe über den Zeitraum",avg:"Durchschnitt über den Zeitraum",last:"Bestand am Ende des Zeitraums"};
+function setGlobalDisplayWindow(value){
+  dashboardWindow=WINDOW_LABELS[value]?value:"current";
+  storageSet(WINDOW_STORAGE_KEY,dashboardWindow);
+  updateAll();
+}
 
 
 let dashboardDisplayYear=null;   // aktuell im Header gewähltes Jahr (alle Fenster)
@@ -2221,19 +2287,40 @@ function renderSawlineTable(rows){
 }
 function renderSawline(){
   if(!document.getElementById("sawlineWeek"))return;
-  const week=Number(sawlineWeek.value),rows=sawlineRowsForWeek(week);
+  const endWeek=Number(sawlineWeek.value);
+  const sawWeeks=availableSawlineWeeks();
+  const weeks=dashboardWindowWeeks(endWeek,sawWeeks);
+  const windowed=weeks.length>1;
+  const set=new Set(weeks.map(Number));
   updateSawlineStepButtons();
-  if(!rows.length){
-    sawlineKpis.innerHTML='<div class="notice">Für diese Kalenderwoche wurden keine Sägelinien-Produktionsdaten geladen.</div>';
+  const inWindow=DATA.sawlineReports.filter(row=>set.has(Number(row["KW Nr."])));
+  if(!inWindow.length){
+    sawlineKpis.innerHTML='<div class="notice">Für den gewählten Zeitraum wurden keine Sägelinien-Produktionsdaten geladen.</div>';
     sawlineDailyChart.innerHTML='<div class="empty">Keine Daten</div>';
     sawlineTrendChart.innerHTML='<div class="empty">Keine Daten</div>';
     sawlineTable.innerHTML="";
     return;
   }
-  const meta=rows[0];
-  sawlinePeriodChip.textContent=`KW${week}${meta.Zeitraum?" · "+meta.Zeitraum:""}`;
-  sawlineSourceText.textContent=`Quelle: ${meta.Quelldatei}`;
   const dayPairs=[["Mo","Montag"],["Di","Dienstag"],["Mi","Mittwoch"],["Do","Donnerstag"],["Fr","Freitag"],["Sa","Samstag"]];
+  const dayKeys=dayPairs.map(pair=>pair[1]);
+  // Kennzahlen (Zeilen) in stabiler Reihenfolge, je KPI über die Fensterwochen aggregiert
+  const kpiOrder=[...new Map(inWindow.map(row=>[row.KPI,row])).values()].sort((a,b)=>Number(a.Zeile)-Number(b.Zeile));
+  const rows=kpiOrder.map(sample=>{
+    const rs=inWindow.filter(row=>row.KPI===sample.KPI);
+    const type=sample.Werttyp||"number";
+    const agg={KPI:sample.KPI,Werttyp:type,Zeitraum:sample.Zeitraum,Quelldatei:sample.Quelldatei};
+    ["Summe",...dayKeys].forEach(key=>agg[key]=windowAggregate(rs.map(row=>n(row[key])),type));
+    return agg;
+  });
+  const scope=windowScopeText(weeks);
+  if(windowed){
+    sawlinePeriodChip.textContent=scope;
+    sawlineSourceText.textContent=`${weeks.length} Sägelinien-Wochen aggregiert (Summen Σ · Raten Ø)`;
+  }else{
+    const meta=inWindow[0];
+    sawlinePeriodChip.textContent=`KW${weeks[0]}${meta.Zeitraum?" · "+meta.Zeitraum:""}`;
+    sawlineSourceText.textContent=`Quelle: ${meta.Quelldatei}`;
+  }
   sawlineKpis.innerHTML=rows.map(row=>`<article class="sawline-kpi-card">
     <div class="sawline-kpi-title">${esc(row.KPI)}</div>
     <div class="sawline-kpi-sum">${sawlineValue(row,row.Summe)}</div>
@@ -2244,12 +2331,12 @@ function renderSawline(){
   const metric=sawlineMetric.value||rows[0].KPI;
   if(!sawlineMetric.value)sawlineMetric.value=metric;
   const selected=rows.find(row=>row.KPI===metric)||rows[0];
-  sawlineDailySub.textContent=`KW${week} · ${selected.KPI}`;
+  sawlineDailySub.textContent=`${scope} · ${selected.KPI}${windowed?" (aggregiert)":""}`;
   barChart("sawlineDailyChart",dayPairs.map(([short,key],index)=>({
     label:short,value:n(selected[key])||0,color:colors[index%colors.length],
     formatted:sawlineValue(selected,selected[key])
   })),{tick:value=>selected.Werttyp==="pctpoint"?fmtNum.format(value):fmt0.format(value)});
-  const trendRows=DATA.sawlineReports.filter(row=>row.KPI===selected.KPI).sort((a,b)=>a["KW Nr."]-b["KW Nr."]);
+  const trendRows=DATA.sawlineReports.filter(row=>row.KPI===selected.KPI&&(windowed?set.has(Number(row["KW Nr."])):true)).sort((a,b)=>a["KW Nr."]-b["KW Nr."]);
   sawlineTrendSub.textContent=`${selected.KPI} · Summe beziehungsweise Wochenwert`;
   lineChart("sawlineTrendChart",trendRows.map(row=>row.KW),[
     {name:selected.KPI,values:trendRows.map(row=>n(row.Summe)),format:value=>format(value,selected.Werttyp)}
@@ -2258,56 +2345,85 @@ function renderSawline(){
 }
 
 /* ---------- Plausibilitätsprüfung Verladungen ----------
-   Pro Verladung können maximal 40 m³ geladen werden. Damit gilt:
-   Anzahl Verladungen × 40 = X, und X darf die Umsatzmenge gesamt nicht
-   übersteigen. Toleranz: 10 %. */
+   Pro Verladung können maximal 40 m³ geladen werden. Die Verladekapazität
+   einer Woche ist damit Anzahl Verladungen × 40 = X. Die Umsatzmenge gesamt
+   kann nicht größer sein als diese Kapazität – sonst wären je Verladung mehr
+   als 40 m³ transportiert worden. Toleranz: 10 %. */
 const SHIPMENT_MAX_M3=40;
 const SHIPMENT_TOLERANCE=0.10;
 function shipmentPlausibility(weekly){
   const verladungen=n(weekly&&weekly["Verladungen gesamt"]);
   const umsatz=n(weekly&&weekly["Umsatzmenge gesamt (m³)"]);
   if(verladungen===null||umsatz===null)return null;   // nicht prüfbar
-  const x=verladungen*SHIPMENT_MAX_M3;
-  const limit=umsatz*(1+SHIPMENT_TOLERANCE);
-  return {ok:x<=limit,x,umsatz,verladungen,limit};
+  const x=verladungen*SHIPMENT_MAX_M3;                 // Verladekapazität
+  const limit=x*(1+SHIPMENT_TOLERANCE);                // Kapazität inkl. 10 % Toleranz
+  return {ok:umsatz<=limit,x,umsatz,verladungen,limit};
 }
-function renderSalesPlausibility(weekly,week){
+/* Plausibilität über mehrere Wochen (Summe Verladungen bzw. Umsatzmenge). */
+function shipmentPlausibilityWeeks(weeks){
+  const set=new Set(weeks.map(Number));
+  const rows=DATA.weekly.filter(r=>set.has(Number(r["KW Nr."])));
+  const verl=rows.map(r=>n(r["Verladungen gesamt"])).filter(v=>v!==null);
+  const ums=rows.map(r=>n(r["Umsatzmenge gesamt (m³)"])).filter(v=>v!==null);
+  if(!verl.length||!ums.length)return null;
+  const verladungen=verl.reduce((a,b)=>a+b,0),umsatz=ums.reduce((a,b)=>a+b,0);
+  const x=verladungen*SHIPMENT_MAX_M3,limit=x*(1+SHIPMENT_TOLERANCE);
+  return {ok:umsatz<=limit,x,umsatz,verladungen,limit};
+}
+function renderSalesPlausibility(weeks){
   const host=document.getElementById("salesPlausibility");
   if(!host)return;
-  if(!Number.isFinite(week)||!(DATA.weekly&&DATA.weekly.length)){host.hidden=true;return;}
-  const p=shipmentPlausibility(weekly);
+  if(!weeks.length||!(DATA.weekly&&DATA.weekly.length)){host.hidden=true;return;}
+  const scope=weeks.length===1?`KW${weeks[0]}`:windowScopeText(weeks);
+  const p=shipmentPlausibilityWeeks(weeks);
   if(!p){
     host.hidden=false;host.className="plausi-banner plausi-neutral";
-    host.innerHTML=`<span class="plausi-icon">–</span><div class="plausi-text"><strong>Prüfung nicht möglich</strong><div class="plausi-detail">Für KW${week} fehlen Verladungen oder Umsatzmenge.</div></div>`;
+    host.innerHTML=`<span class="plausi-icon">–</span><div class="plausi-text"><strong>Prüfung nicht möglich</strong><div class="plausi-detail">Für ${scope} fehlen Verladungen oder Umsatzmenge.</div></div>`;
     return;
   }
   host.hidden=false;
   host.className=`plausi-banner ${p.ok?"plausi-ok":"plausi-bad"}`;
-  const detail=`Verladungen ${fmt0.format(p.verladungen)} × ${SHIPMENT_MAX_M3} m³ = ${format(p.x,"m3")} `+
-    `${p.ok?"≤":">"} Umsatzmenge ${format(p.umsatz,"m3")} + 10 % Toleranz (${format(p.limit,"m3")})`;
+  const detail=`Umsatzmenge ${format(p.umsatz,"m3")} ${p.ok?"≤":">"} Verladekapazität `+
+    `(${fmt0.format(p.verladungen)} Verladungen × ${SHIPMENT_MAX_M3} m³ = ${format(p.x,"m3")}) + 10 % Toleranz (${format(p.limit,"m3")})`;
   host.innerHTML=`<span class="plausi-icon">${p.ok?"✓":"✗"}</span>`+
-    `<div class="plausi-text"><strong>${p.ok?"Prüfung OK":"Prüfung NICHT OK"}</strong> · KW${week}`+
+    `<div class="plausi-text"><strong>${p.ok?"Prüfung OK":"Prüfung NICHT OK"}</strong> · ${scope}`+
     `<div class="plausi-detail">${detail}</div></div>`;
 }
 function renderSales(){
   if(!document.getElementById("salesWeek"))return;
-  const week=Number(salesWeek.value),rows=salesRowsForWeek(week);
-  const weekly=DATA.weekly.find(row=>row["KW Nr."]===week);
-  renderSalesPlausibility(weekly,week);
-  if(!rows.length||!weekly){
-    salesKpis.innerHTML='<div class="notice">Für die gewählte Kalenderwoche liegen keine Umsatzdetails vor.</div>';
+  const endWeek=Number(salesWeek.value);
+  const weeks=dashboardWindowWeeks(endWeek);
+  const windowed=weeks.length>1;
+  renderSalesPlausibility(weeks);
+  const set=new Set(weeks.map(Number));
+  const cats=[...new Set(DATA.salesBreakdown.filter(row=>set.has(Number(row["KW Nr."]))).map(row=>row.Kategorie))];
+  const gesamtmenge=windowWeeklyField("Umsatzmenge gesamt (m³)",weeks,"m3");
+  const preis=windowWeeklyField("Ø Preis gesamt (€/m³)",weeks,"price");
+  if(!cats.length){
+    salesKpis.innerHTML='<div class="notice">Für den gewählten Zeitraum liegen keine Umsatzdetails vor.</div>';
+    barChart("salesQtyChart",[]);barChart("salesPriceChart",[]);lineChart("salesTrendChart",[],[]);renderTable("salesTable",[],[["Kategorie","text"]]);
     return;
   }
+  const rows=cats.map(cat=>{
+    const rs=DATA.salesBreakdown.filter(row=>row.Kategorie===cat&&set.has(Number(row["KW Nr."])));
+    return {
+      Kategorie:cat,
+      "Menge (m³)":windowAggregate(rs.map(row=>n(row["Menge (m³)"])),"m3"),
+      "EUR (€/m³)":windowAggregate(rs.map(row=>n(row["EUR (€/m³)"])),"price"),
+      "M%":windowAggregate(rs.map(row=>n(row["M%"])),"pctpoint")
+    };
+  });
+  const scope=windowScopeText(weeks);
   const byName=name=>rows.find(row=>row.Kategorie===name);
   const main=byName("Hauptware Säge"),side=byName("NE Sägewerk");
   salesKpis.innerHTML=[
-    detailKpi("Gesamtmenge",weekly["Umsatzmenge gesamt (m³)"],"m3",weekly.KW),
-    detailKpi("Ø Preis Gesamt",weekly["Ø Preis gesamt (€/m³)"],"price",weekly.KW),
+    detailKpi(windowed?"Gesamtmenge (Σ)":"Gesamtmenge",gesamtmenge,"m3",scope),
+    detailKpi(windowed?"Ø Preis Gesamt (Ø)":"Ø Preis Gesamt",preis,"price",scope),
     detailKpi("Hauptware Säge · M%",main?.["M%"],"pctpoint",format(main?.["Menge (m³)"],"m3")),
     detailKpi("NE Sägewerk · M%",side?.["M%"],"pctpoint",format(side?.["Menge (m³)"],"m3"))
   ].join("");
-  salesQtySub.textContent=`${weekly.KW} · Menge nach BM in m³`;
-  salesPriceSub.textContent=`${weekly.KW} · Durchschnittspreis in €/m³`;
+  salesQtySub.textContent=windowed?`${scope} · Menge nach BM in m³ (Σ)`:`${scope} · Menge nach BM in m³`;
+  salesPriceSub.textContent=windowed?`${scope} · Ø-Preis in €/m³`:`${scope} · Durchschnittspreis in €/m³`;
   barChart("salesQtyChart",rows.map((row,index)=>({
     label:row.Kategorie,value:n(row["Menge (m³)"])||0,color:colors[index%colors.length],
     formatted:format(row["Menge (m³)"],"m3")
@@ -2317,7 +2433,7 @@ function renderSales(){
     formatted:format(row["EUR (€/m³)"],"price")
   })),{tick:value=>fmt0.format(value)});
   const category=salesCategory.value||rows[0].Kategorie;
-  const categoryRows=DATA.salesBreakdown.filter(row=>row.Kategorie===category).sort((a,b)=>a["KW Nr."]-b["KW Nr."]);
+  const categoryRows=DATA.salesBreakdown.filter(row=>row.Kategorie===category&&(windowed?set.has(Number(row["KW Nr."])):true)).sort((a,b)=>a["KW Nr."]-b["KW Nr."]);
   const firstQty=categoryRows.find(row=>n(row["Menge (m³)"])!==null)?.["Menge (m³)"];
   const firstPrice=categoryRows.find(row=>n(row["EUR (€/m³)"])!==null)?.["EUR (€/m³)"];
   lineChart("salesTrendChart",categoryRows.map(row=>row.KW),[
@@ -2330,71 +2446,94 @@ function renderSales(){
 }
 function renderProduction(){
   if(!document.getElementById("productionWeek"))return;
-  const week=Number(productionWeek.value),rows=productionRowsForWeek(week);
-  if(!rows.length){
-    productionKpis.innerHTML='<div class="notice">Für die gewählte Kalenderwoche liegen keine Produktionsdetails vor.</div>';
+  const endWeek=Number(productionWeek.value);
+  const weeks=dashboardWindowWeeks(endWeek);
+  const windowed=weeks.length>1;
+  const set=new Set(weeks.map(Number));
+  const metricsInWindow=[...new Map(DATA.productionCurrent.filter(r=>set.has(Number(r["KW Nr."]))).map(r=>[r.Kennzahl,r])).values()];
+  if(!metricsInWindow.length){
+    productionKpis.innerHTML='<div class="notice">Für den gewählten Zeitraum liegen keine Produktionsdetails vor.</div>';
+    barChart("productionFmChart",[]);lineChart("productionTrendChart",[],[]);renderTable("productionCurrentTable",[],[["Kennzahl","text"]]);
     return;
   }
-  productionKpis.innerHTML=rows.map(row=>detailKpi(
-    row.Kennzahl,row.Aktuell,row.Einheit==="m³"?"m3":"fm",row.KW+" · Aktuell"
-  )).join("");
-  productionFmSub.textContent=`KW${week} · aktuelle Leistung in fm`;
-  const fmRows=rows.filter(row=>row.Einheit==="fm");
-  barChart("productionFmChart",fmRows.map((row,index)=>({
-    label:row.Kennzahl,value:n(row.Aktuell)||0,color:colors[index%colors.length],
-    formatted:format(row.Aktuell,"fm")
+  const scope=windowScopeText(weeks);
+  const agg=metricsInWindow.map(sample=>{
+    const type=sample.Einheit==="m³"?"m3":"fm";
+    const rs=DATA.productionCurrent.filter(r=>r.Kennzahl===sample.Kennzahl&&set.has(Number(r["KW Nr."])));
+    return {Kennzahl:sample.Kennzahl,Einheit:sample.Einheit,type,value:windowAggregate(rs.map(r=>n(r.Aktuell)),type)};
+  });
+  productionKpis.innerHTML=agg.map(a=>detailKpi(a.Kennzahl,a.value,a.type,windowed?`${scope} · Σ`:scope)).join("");
+  productionFmSub.textContent=windowed?`${scope} · Leistung in fm (Σ)`:`${scope} · aktuelle Leistung in fm`;
+  barChart("productionFmChart",agg.filter(a=>a.Einheit==="fm").map((a,index)=>({
+    label:a.Kennzahl,value:n(a.value)||0,color:colors[index%colors.length],formatted:format(a.value,"fm")
   })),{tick:value=>fmt0.format(value)});
   const metric=productionMetric.value||"Gesamt Fm";
-  const trendRows=DATA.productionCurrent.filter(row=>row.Kennzahl===metric).sort((a,b)=>a["KW Nr."]-b["KW Nr."]);
+  const trendRows=DATA.productionCurrent.filter(row=>row.Kennzahl===metric&&(windowed?set.has(Number(row["KW Nr."])):true)).sort((a,b)=>a["KW Nr."]-b["KW Nr."]);
   const type=trendRows[0]?.Einheit==="m³"?"m3":"fm";
   lineChart("productionTrendChart",trendRows.map(row=>row.KW),[
     {name:metric,values:trendRows.map(row=>n(row.Aktuell)),format:value=>format(value,type)}
   ],{zero:true,tick:value=>fmt0.format(value)});
-  const previousWeek=DATA.weekly.filter(row=>row["KW Nr."]<week).sort((a,b)=>b["KW Nr."]-a["KW Nr."])[0]?.["KW Nr."];
-  const tableRows=rows.map(row=>{
-    const previous=DATA.productionCurrent.find(item=>item["KW Nr."]===previousWeek&&item.Kennzahl===row.Kennzahl);
-    const delta=previous&&n(previous.Aktuell)!==null&&n(row.Aktuell)!==null?n(row.Aktuell)-n(previous.Aktuell):null;
-    const deltaPct=previous&&n(previous.Aktuell)?delta/Math.abs(n(previous.Aktuell)):null;
-    return {...row,"Vorwoche":previous?.Aktuell??null,"Δ absolut":delta,"Δ %":deltaPct};
-  });
-  renderTable("productionCurrentTable",tableRows,[
-    ["Kennzahl","text"],["Aktuell","productionValue"],["Vorwoche","productionValue"],["Δ absolut","productionDelta"],["Δ %","percent"]
-  ]);
+  if(windowed){
+    renderTable("productionCurrentTable",agg.map(a=>({Kennzahl:a.Kennzahl,Einheit:a.Einheit,"Zeitraum (Σ/Ø)":a.value})),[
+      ["Kennzahl","text"],["Zeitraum (Σ/Ø)","productionValue"]
+    ]);
+  }else{
+    const week=weeks[0],rows=productionRowsForWeek(week);
+    const previousWeek=DATA.weekly.filter(row=>row["KW Nr."]<week).sort((a,b)=>b["KW Nr."]-a["KW Nr."])[0]?.["KW Nr."];
+    const tableRows=rows.map(row=>{
+      const previous=DATA.productionCurrent.find(item=>item["KW Nr."]===previousWeek&&item.Kennzahl===row.Kennzahl);
+      const delta=previous&&n(previous.Aktuell)!==null&&n(row.Aktuell)!==null?n(row.Aktuell)-n(previous.Aktuell):null;
+      const deltaPct=previous&&n(previous.Aktuell)?delta/Math.abs(n(previous.Aktuell)):null;
+      return {...row,"Vorwoche":previous?.Aktuell??null,"Δ absolut":delta,"Δ %":deltaPct};
+    });
+    renderTable("productionCurrentTable",tableRows,[
+      ["Kennzahl","text"],["Aktuell","productionValue"],["Vorwoche","productionValue"],["Δ absolut","productionDelta"],["Δ %","percent"]
+    ]);
+  }
 }
 
 function renderEinkauf(){
   if(!document.getElementById("einkaufKpis"))return;
-  const rows=purchasingRowsActive();
+  const allRows=purchasingRowsActive();
   const year=activeDashboardYear();
-  const scope=document.getElementById("einkaufScope");
-  if(scope)scope.textContent=`Einkauf ${year}`;
-  if(!rows.length){
+  const scopeChip=document.getElementById("einkaufScope");
+  if(!allRows.length){
+    if(scopeChip)scopeChip.textContent=`Einkauf ${year}`;
     einkaufKpis.innerHTML='<div class="notice">Für das gewählte Jahr liegen keine Einkaufsdaten vor.</div>';
     lineChart("einkaufPriceChart",[],[]);lineChart("einkaufQtyChart",[],[]);lineChart("einkaufComboChart",[],[]);
     renderTable("einkaufTable",[],[["KW","text"]]);
     return;
   }
+  const purchaseWeeks=allRows.map(row=>Number(row.week));
+  const weeks=dashboardWindowWeeks(null,purchaseWeeks);   // an der aktuellsten Einkaufs-KW verankert
+  const windowed=weeks.length>1;
+  const set=new Set(weeks.map(Number));
+  const rows=allRows.filter(row=>set.has(Number(row.week)));
+  const scopeText=windowScopeText(weeks);
+  if(scopeChip)scopeChip.textContent=`Einkauf ${year} · ${dashboardWindowLabel()}`;
   const sum=key=>rows.reduce((total,row)=>total+(n(row[key])||0),0);
   const nettoSum=sum("netto"),fmGekauftSum=sum("fmGekauft"),fmGeliefertSum=sum("fmGeliefert");
   const avgPreis=fmGekauftSum?nettoSum/fmGekauftSum:null;
   const liefergrad=fmGekauftSum?fmGeliefertSum/fmGekauftSum:null;
-  const weeksWith=rows.filter(row=>n(row.fmGekauft)).length;
   einkaufKpis.innerHTML=[
-    detailKpi("Einkaufswert netto",nettoSum,"currency",`${year} · Σ ${weeksWith} Wochen`),
-    detailKpi("fm gekauft",fmGekauftSum,"fm",`${year} · Σ`),
-    detailKpi("fm geliefert",fmGeliefertSum,"fm",`${year} · Σ`),
+    detailKpi(windowed?"Einkaufswert netto (Σ)":"Einkaufswert netto",nettoSum,"currency",scopeText),
+    detailKpi(windowed?"fm gekauft (Σ)":"fm gekauft",fmGekauftSum,"fm",scopeText),
+    detailKpi(windowed?"fm geliefert (Σ)":"fm geliefert",fmGeliefertSum,"fm",scopeText),
     detailKpi("Ø Einkaufspreis",avgPreis,"pricefm","Netto ÷ fm gekauft"),
     detailKpi("Liefergrad",liefergrad,"percent","fm geliefert ÷ fm gekauft")
   ].join("");
-  const labels=rows.map(row=>`KW${row.week}`);
+  // Diagramme: im Fenstermodus auf die Fensterwochen begrenzt, sonst voller Jahresverlauf
+  const chartRows=windowed?rows:allRows;
+  const labels=chartRows.map(row=>`KW${row.week}`);
   lineChart("einkaufPriceChart",labels,[
-    {name:"Ø Einkaufspreis (€/fm)",values:rows.map(purchasingAvgPreis),format:value=>format(value,"pricefm")}
+    {name:"Ø Einkaufspreis (€/fm)",values:chartRows.map(purchasingAvgPreis),format:value=>format(value,"pricefm")}
   ],{zero:false,tick:value=>fmt2.format(value)});
   lineChart("einkaufQtyChart",labels,[
-    {name:"fm gekauft",values:rows.map(row=>n(row.fmGekauft)),format:value=>format(value,"fm")},
-    {name:"fm geliefert",values:rows.map(row=>n(row.fmGeliefert)),format:value=>format(value,"fm")}
+    {name:"fm gekauft",values:chartRows.map(row=>n(row.fmGekauft)),format:value=>format(value,"fm")},
+    {name:"fm geliefert",values:chartRows.map(row=>n(row.fmGeliefert)),format:value=>format(value,"fm")}
   ],{zero:true,tick:value=>fmt0.format(value)});
-  const combo=purchasingSalesSeries().filter(point=>point.umsatz!==null&&point.fmGeliefert!==null);
+  const comboAll=purchasingSalesSeries().filter(point=>point.umsatz!==null&&point.fmGeliefert!==null);
+  const combo=windowed?comboAll.filter(point=>set.has(Number(point.week))):comboAll;
   const comboSub=document.getElementById("einkaufComboSub");
   if(!combo.length){
     lineChart("einkaufComboChart",[],[]);
@@ -2408,7 +2547,7 @@ function renderEinkauf(){
     const wSum=combo.reduce((total,point)=>total+point.umsatz,0),fSum=combo.reduce((total,point)=>total+point.fmGeliefert,0);
     if(comboSub)comboSub.textContent=`${combo.length} gemeinsame Wochen · Umsatz je fm geliefert (gewichtet) ${format(fSum?wSum/fSum:null,"pricefm")} · Linien indexiert auf die erste gemeinsame Woche = 100.`;
   }
-  const tableRows=rows.map(row=>({
+  const tableRows=chartRows.map(row=>({
     "KW":`KW${row.week}`,"Netto (€)":n(row.netto),"fm gekauft":n(row.fmGekauft),
     "fm geliefert":n(row.fmGeliefert),"Ø Preis (€/fm)":purchasingAvgPreis(row)
   }));
@@ -2417,15 +2556,48 @@ function renderEinkauf(){
   ]);
 }
 
+function kpiCardWindow(label,value,type,scopeText,delta,mode){
+  const deltaText=delta===null?"kein Vorzeitraum":`${trendArrow(delta)} ${format(delta,"percent")} zum Vorzeitraum`;
+  return `<div class="kpi">
+    <div class="kpi-head">
+      <div class="kpi-label">${esc(label)}</div>
+      <span class="kpi-window-tag" title="${esc(WINDOW_TAG_TITLE[mode]||"")}">${esc(WINDOW_TAG[mode]||"Σ")}</span>
+    </div>
+    <div class="kpi-value">${format(value,type)}</div>
+    <div class="kpi-meta">
+      <span class="delta ${deltaClass(delta)}">${deltaText}</span>
+      <span>${esc(scopeText)}</span>
+    </div>
+  </div>`;
+}
 function renderKpis(){
-  const periodRows=selectedWeekly();if(!periodRows.length)return;
-  const periodEnd=periodRows[periodRows.length-1];
+  if(!document.getElementById("kpis"))return;
   const defs=[
     ["Umsatzmenge","Umsatzmenge gesamt (m³)","m3"],["Ø Preis","Ø Preis gesamt (€/m³)","price"],
     ["DB Netto","DB Netto (€)","currency"],["DB je m³","DB (€/m³)","price"],
     ["Produktion","Produktion KW gesamt (fm)","fm"],["Auftragseingang","Auftragseingang gesamt (m³)","m3"],
     ["4-Wochenbestand","Auftragsbestand 4W (m³)","m3"],["Verladungen","Verladungen gesamt","number"]
   ];
+  if(dashboardWindow!=="current"){
+    const allWeeks=availableDashboardWeeks();
+    if(!allWeeks.length){kpis.innerHTML='<div class="notice">Für den gewählten Zeitraum liegen keine Werte vor.</div>';rangeText.textContent="";latestChip.textContent="";return;}
+    const weeks=dashboardWindowWeeks();
+    const scope=windowScopeText(weeks);
+    const before=allWeeks.filter(w=>w<weeks[0]);
+    const prevWeeks=dashboardWindow==="ytd"?[]:before.slice(-weeks.length);
+    kpis.innerHTML=defs.map(([label,key,type])=>{
+      const mode=windowAggMode(key,type);
+      const value=windowWeeklyFieldMode(key,weeks,mode);
+      const prev=prevWeeks.length?windowWeeklyFieldMode(key,prevWeeks,mode):null;
+      const d=(prev!==null&&value!==null)?pctDelta(prev,value):null;
+      return kpiCardWindow(label,value,type,scope,d,mode);
+    }).join("");
+    rangeText.textContent=`Aggregierter Zeitraum: ${scope} · Mengen/Werte summiert, Preise und Quoten gemittelt`;
+    latestChip.textContent=`Zeitraum: ${dashboardWindowLabel()}`;
+    return;
+  }
+  const periodRows=selectedWeekly();if(!periodRows.length)return;
+  const periodEnd=periodRows[periodRows.length-1];
   kpis.innerHTML=defs.map(([label,key,type],index)=>{
     if(kpiWeekSelection[index]===undefined)kpiWeekSelection[index]=periodEnd["KW Nr."];
     const selectedWeek=kpiWeekSelection[index];
@@ -5305,7 +5477,7 @@ function infraCheckCell(ok){return `<td class="infra-check ${ok?"infra-ok":"infr
 function infraPlausiCell(weekly){
   const p=shipmentPlausibility(weekly);
   if(!p)return `<td class="infra-check infra-neutral" title="nicht prüfbar – Verladungen oder Umsatzmenge fehlt">–</td>`;
-  const title=`Verladungen ${fmt0.format(p.verladungen)} × 40 = ${fmtNum.format(p.x)} m³ ${p.ok?"≤":">"} Umsatzmenge ${fmtNum.format(p.umsatz)} m³ + 10 % (${fmtNum.format(p.limit)} m³)`;
+  const title=`Umsatzmenge ${fmtNum.format(p.umsatz)} m³ ${p.ok?"≤":">"} Verladekapazität ${fmt0.format(p.verladungen)} × 40 = ${fmtNum.format(p.x)} m³ + 10 % (${fmtNum.format(p.limit)} m³)`;
   return `<td class="infra-check ${p.ok?"infra-ok":"infra-bad"}" title="${esc(title)}">${p.ok?"✓":"✗"}</td>`;
 }
 function renderInfrastructure(){

@@ -95,6 +95,7 @@ main{max-width:none;margin:0 auto;padding:22px 32px 50px}
 .kpi{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:15px 16px;box-shadow:var(--shadow)}
 .kpi-head,.card-title-row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
 .kpi-label{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:750}
+.kpi-window-tag{flex:none;font-size:12px;font-weight:800;color:#237a34;background:#eef7ea;border:1px solid #cfe8bf;border-radius:6px;padding:2px 9px;line-height:1.6}
 .kpi-week-select,.local-week-select{
   min-width:76px;border:1px solid var(--line);background:var(--ice);color:var(--navy);
   border-radius:8px;padding:5px 7px;font-size:12px;font-weight:750;outline:none;cursor:pointer
@@ -1595,6 +1596,13 @@ body.monitor-mode .nav button[data-action="monitor"]{
             <select id="displayYear" class="display-year-select" aria-label="Jahr aller Anzeigen" title="Jahr auswählen"></select>
           </div>
         </div>
+        <div class="control"><label>Zeitraum</label><select id="displayWindow" title="Aktuellste KW oder aggregiertes Zeitfenster (4 Wochen, 3/6 Monate, YTD) für die Wertreiter Übersicht, Umsatz, Einkauf, Produktion und Sägelinie">
+          <option value="current">Aktuellste KW</option>
+          <option value="4">4 Wochen</option>
+          <option value="13">3 Monate</option>
+          <option value="26">6 Monate</option>
+          <option value="ytd">YTD (Jahr)</option>
+        </select></div>
         <div class="control"><label>Von</label><select id="weekFrom"></select></div>
         <div class="control"><label>Bis</label><select id="weekTo"></select></div>
         <div class="control"><label>Monitor-Raster</label><select id="monitorCols"><option value="1">1 Spalte</option><option value="2" selected>2 Spalten</option><option value="3">3 Spalten</option></select></div>
