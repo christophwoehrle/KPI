@@ -2257,10 +2257,43 @@ function renderSawline(){
   renderSawlineTable(rows);
 }
 
+/* ---------- Plausibilitätsprüfung Verladungen ----------
+   Pro Verladung können maximal 40 m³ geladen werden. Damit gilt:
+   Anzahl Verladungen × 40 = X, und X darf die Umsatzmenge gesamt nicht
+   übersteigen. Toleranz: 10 %. */
+const SHIPMENT_MAX_M3=40;
+const SHIPMENT_TOLERANCE=0.10;
+function shipmentPlausibility(weekly){
+  const verladungen=n(weekly&&weekly["Verladungen gesamt"]);
+  const umsatz=n(weekly&&weekly["Umsatzmenge gesamt (m³)"]);
+  if(verladungen===null||umsatz===null)return null;   // nicht prüfbar
+  const x=verladungen*SHIPMENT_MAX_M3;
+  const limit=umsatz*(1+SHIPMENT_TOLERANCE);
+  return {ok:x<=limit,x,umsatz,verladungen,limit};
+}
+function renderSalesPlausibility(weekly,week){
+  const host=document.getElementById("salesPlausibility");
+  if(!host)return;
+  if(!Number.isFinite(week)||!(DATA.weekly&&DATA.weekly.length)){host.hidden=true;return;}
+  const p=shipmentPlausibility(weekly);
+  if(!p){
+    host.hidden=false;host.className="plausi-banner plausi-neutral";
+    host.innerHTML=`<span class="plausi-icon">–</span><div class="plausi-text"><strong>Prüfung nicht möglich</strong><div class="plausi-detail">Für KW${week} fehlen Verladungen oder Umsatzmenge.</div></div>`;
+    return;
+  }
+  host.hidden=false;
+  host.className=`plausi-banner ${p.ok?"plausi-ok":"plausi-bad"}`;
+  const detail=`Verladungen ${fmt0.format(p.verladungen)} × ${SHIPMENT_MAX_M3} m³ = ${format(p.x,"m3")} `+
+    `${p.ok?"≤":">"} Umsatzmenge ${format(p.umsatz,"m3")} + 10 % Toleranz (${format(p.limit,"m3")})`;
+  host.innerHTML=`<span class="plausi-icon">${p.ok?"✓":"✗"}</span>`+
+    `<div class="plausi-text"><strong>${p.ok?"Prüfung OK":"Prüfung NICHT OK"}</strong> · KW${week}`+
+    `<div class="plausi-detail">${detail}</div></div>`;
+}
 function renderSales(){
   if(!document.getElementById("salesWeek"))return;
   const week=Number(salesWeek.value),rows=salesRowsForWeek(week);
   const weekly=DATA.weekly.find(row=>row["KW Nr."]===week);
+  renderSalesPlausibility(weekly,week);
   if(!rows.length||!weekly){
     salesKpis.innerHTML='<div class="notice">Für die gewählte Kalenderwoche liegen keine Umsatzdetails vor.</div>';
     return;
@@ -5269,6 +5302,12 @@ const INFRA_WEEKLY_KPIS=[
   ["Verladungen",b=>infraHasKey(b.weekly,"Verladungen gesamt")]
 ];
 function infraCheckCell(ok){return `<td class="infra-check ${ok?"infra-ok":"infra-bad"}" title="${ok?"verfügbar":"fehlt"}">${ok?"✓":"✗"}</td>`;}
+function infraPlausiCell(weekly){
+  const p=shipmentPlausibility(weekly);
+  if(!p)return `<td class="infra-check infra-neutral" title="nicht prüfbar – Verladungen oder Umsatzmenge fehlt">–</td>`;
+  const title=`Verladungen ${fmt0.format(p.verladungen)} × 40 = ${fmtNum.format(p.x)} m³ ${p.ok?"≤":">"} Umsatzmenge ${fmtNum.format(p.umsatz)} m³ + 10 % (${fmtNum.format(p.limit)} m³)`;
+  return `<td class="infra-check ${p.ok?"infra-ok":"infra-bad"}" title="${esc(title)}">${p.ok?"✓":"✗"}</td>`;
+}
 function renderInfrastructure(){
   const weeklyTable=document.getElementById("infraWeeklyTable");
   if(!weeklyTable)return;
@@ -5287,11 +5326,13 @@ function renderInfrastructure(){
         <td class="infra-yr">${esc(String(b.year))}</td>
         <td class="infra-kw">KW${String(b.week).padStart(2,"0")}</td>
         <td class="infra-file">${esc(b.fileName||`KW-${String(b.week).padStart(2,"0")}-${b.year}.xlsx`)}</td>
-        ${checks}</tr>`;
+        ${checks}${infraPlausiCell(b.weekly)}</tr>`;
     }).join("");
-    weeklyTable.innerHTML=`<thead><tr><th>Jahr</th><th>KW</th><th>Datei</th>${kpiHead}</tr></thead><tbody>${body}</tbody>`;
+    weeklyTable.innerHTML=`<thead><tr><th>Jahr</th><th>KW</th><th>Datei</th>${kpiHead}<th class="infra-kpi infra-plausi" title="Anzahl Verladungen × 40 m³ darf die Umsatzmenge (+10 % Toleranz) nicht übersteigen">Plausibilität Verladung</th></tr></thead><tbody>${body}</tbody>`;
     const fullyClean=bundles.filter(b=>INFRA_WEEKLY_KPIS.every(k=>{try{return !!k[1](b);}catch(e){return false;}})).length;
-    document.getElementById("infraWeeklySub").textContent=`${bundles.length} Datei(en) · ${fullyClean} vollständig sauber · ${INFRA_WEEKLY_KPIS.length} Kennzahlen geprüft`;
+    const plausiResults=bundles.map(b=>shipmentPlausibility(b.weekly)).filter(Boolean);
+    const plausiOk=plausiResults.filter(p=>p.ok).length;
+    document.getElementById("infraWeeklySub").textContent=`${bundles.length} Datei(en) · ${fullyClean} vollständig sauber · ${INFRA_WEEKLY_KPIS.length} Kennzahlen geprüft · Plausibilität Verladung: ${plausiOk}/${plausiResults.length} OK`;
   }
   // --- Sägelinie ---
   const sawTable=document.getElementById("infraSawlineTable"),sawCard=document.getElementById("infraSawlineCard");

@@ -1327,7 +1327,23 @@ body.monitor-mode .nav button[data-action="monitor"]{
 .infra-table td.infra-yr,.infra-table td.infra-kw{font-weight:800;color:var(--forest);text-align:center}
 .infra-ok{color:#2f9e44}
 .infra-bad{color:#d64545}
+.infra-neutral{color:#9aa5ad}
+.infra-table th.infra-plausi{background:#3f4a3a}
 .infra-table tbody tr.infra-year-start td{border-top:2px solid var(--streit-green)}
+/* Plausibilitätsmeldung im Umsatzreiter */
+.plausi-banner{display:flex;align-items:center;gap:12px;padding:13px 18px;border-radius:12px;margin:0 0 16px;font-size:14px;border:1px solid var(--line)}
+.plausi-banner .plausi-icon{flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:900;font-size:15px}
+.plausi-banner .plausi-text strong{font-size:15px}
+.plausi-banner .plausi-detail{color:var(--muted);font-size:12px;margin-top:2px}
+.plausi-ok{background:#eef7ea;border-color:#bfe3ac}
+.plausi-ok .plausi-icon{background:#2f9e44}
+.plausi-ok .plausi-text strong{color:#237a34}
+.plausi-bad{background:#fdecec;border-color:#f2b6b6}
+.plausi-bad .plausi-icon{background:#d64545}
+.plausi-bad .plausi-text strong{color:#b02525}
+.plausi-neutral{background:var(--panel);border-color:var(--line)}
+.plausi-neutral .plausi-icon{background:#9aa5ad}
+.plausi-neutral .plausi-text strong{color:var(--muted)}
 .infra-empty{padding:22px;text-align:center;color:var(--muted)}
 .wm-cmp{border-collapse:collapse;margin:6px 0 3px;font-size:11px;min-width:220px;border-radius:5px;overflow:hidden}
 .wm-cmp th,.wm-cmp td{padding:3px 8px;text-align:right;white-space:nowrap;position:static}
@@ -1824,6 +1840,7 @@ body.monitor-mode .nav button[data-action="monitor"]{
       </div>
       <div class="control local-control"><label>Kalenderwoche</label><select class="local-week-select" id="salesWeek"></select></div>
     </div>
+    <div id="salesPlausibility" class="plausi-banner" hidden></div>
     <div class="kpi-grid" id="salesKpis"></div>
     <div class="grid-2">
       <div class="card"><h3>Mengenstruktur</h3><div class="card-sub" id="salesQtySub">Menge nach BM je Produktgruppe</div><div class="chart" id="salesQtyChart"></div></div>
