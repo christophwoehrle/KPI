@@ -21,6 +21,7 @@ function format(v,type="number"){
   const x=Number(v);
   if(type==="currency")return fmtMoney.format(x);
   if(type==="price")return fmt2.format(x)+" €/m³";
+  if(type==="pricefm")return fmt2.format(x)+" €/fm";
   if(type==="percent")return fmtNum.format(x*100)+" %";
   if(type==="pctpoint")return fmt2.format(x)+" %";
   if(type==="lfm")return fmt0.format(x)+" lfm";
@@ -736,10 +737,11 @@ function projectDashboardYear(year){
   DATA.weekly=[];DATA.salesBreakdown=[];DATA.productionCurrent=[];DATA.ytd=[];
   DATA.orderWindow=[];DATA.drying=[];DATA.shipments=[];DATA.countryComparison=[];DATA.issues=[];DATA.landShares=[];DATA.landPrices=[];
   (DATA._weeklyBundles||[]).filter(b=>Number(b.year)===y).sort((a,b)=>a.week-b.week).forEach(applyBundleToWorking);
+  DATA.purchasing=(DATA.purchasingHistory||[]).filter(row=>Number(row.year)===y).sort((a,b)=>a.week-b.week);
   dashboardDisplayYear=y;
 }
 function projectActiveOrLatestYear(){
-  const years=weeklyYears();
+  const years=dashboardYears();
   if(!years.length){projectDashboardYear(historyDashboardYear());return;}
   const y=(dashboardDisplayYear!=null&&years.includes(dashboardDisplayYear))?dashboardDisplayYear:years[years.length-1];
   projectDashboardYear(y);
@@ -972,8 +974,8 @@ async function importExcelFiles(fileList,options={}){
 }
 
 
-const TAB_ORDER_STORAGE_KEY="kwDashboardTabOrderV4";
-const DEFAULT_TAB_ORDER=["countryPoints","assistant","history","sales","production","sawline","overview","trends","annual","statistics","quality","infrastructure","land","countryCompare","worldmap","details","builder"];
+const TAB_ORDER_STORAGE_KEY="kwDashboardTabOrderV5";
+const DEFAULT_TAB_ORDER=["countryPoints","assistant","history","sales","einkauf","production","sawline","overview","trends","annual","statistics","quality","infrastructure","land","countryCompare","worldmap","details","builder"];
 let draggedTabButton=null;
 let suppressNextTabClick=false;
 let touchTabTimer=null;
@@ -2023,8 +2025,15 @@ function weeklyYears(){
   const src=(DATA.weeklyHistory&&DATA.weeklyHistory.length)?DATA.weeklyHistory:(DATA.weekly||[]);
   return [...new Set(src.map(weeklyYearOf).filter(Number.isFinite))].sort((a,b)=>a-b);
 }
+function purchasingYears(){
+  return [...new Set((DATA.purchasingHistory||[]).map(row=>Number(row.year)).filter(Number.isFinite))].sort((a,b)=>a-b);
+}
+/* Jahre für den Kopf-Jahresauswähler: Wochenberichte UND Einkaufsstammdaten. */
+function dashboardYears(){
+  return [...new Set([...weeklyYears(),...purchasingYears()])].sort((a,b)=>a-b);
+}
 function activeDashboardYear(){
-  const years=weeklyYears();
+  const years=dashboardYears();
   if(dashboardDisplayYear!=null&&years.includes(dashboardDisplayYear))return dashboardDisplayYear;
   return years.length?years[years.length-1]:2026;
 }
@@ -2091,7 +2100,7 @@ function stepGlobalDisplayWeek(direction){
 function populateGlobalYearSelector(){
   const sel=document.getElementById("displayYear");
   if(!sel)return;
-  const years=weeklyYears();
+  const years=dashboardYears();
   const active=activeDashboardYear();
   sel.innerHTML=years.map(y=>`<option value="${y}">${y}</option>`).join("");
   sel.value=String(active);
@@ -2107,7 +2116,7 @@ function populateGlobalWeekScroller(preferredWeek=null){
   updateWeekScrollerState();
 }
 function setGlobalDisplayYear(year){
-  const years=weeklyYears();
+  const years=dashboardYears();
   const y=Number(year);
   if(!years.includes(y))return;
   projectDashboardYear(y);   // alle Fenster auf das gewählte Jahr umstellen
@@ -2317,6 +2326,61 @@ function renderProduction(){
   });
   renderTable("productionCurrentTable",tableRows,[
     ["Kennzahl","text"],["Aktuell","productionValue"],["Vorwoche","productionValue"],["Δ absolut","productionDelta"],["Δ %","percent"]
+  ]);
+}
+
+function renderEinkauf(){
+  if(!document.getElementById("einkaufKpis"))return;
+  const rows=purchasingRowsActive();
+  const year=activeDashboardYear();
+  const scope=document.getElementById("einkaufScope");
+  if(scope)scope.textContent=`Einkauf ${year}`;
+  if(!rows.length){
+    einkaufKpis.innerHTML='<div class="notice">Für das gewählte Jahr liegen keine Einkaufsdaten vor.</div>';
+    lineChart("einkaufPriceChart",[],[]);lineChart("einkaufQtyChart",[],[]);lineChart("einkaufComboChart",[],[]);
+    renderTable("einkaufTable",[],[["KW","text"]]);
+    return;
+  }
+  const sum=key=>rows.reduce((total,row)=>total+(n(row[key])||0),0);
+  const nettoSum=sum("netto"),fmGekauftSum=sum("fmGekauft"),fmGeliefertSum=sum("fmGeliefert");
+  const avgPreis=fmGekauftSum?nettoSum/fmGekauftSum:null;
+  const liefergrad=fmGekauftSum?fmGeliefertSum/fmGekauftSum:null;
+  const weeksWith=rows.filter(row=>n(row.fmGekauft)).length;
+  einkaufKpis.innerHTML=[
+    detailKpi("Einkaufswert netto",nettoSum,"currency",`${year} · Σ ${weeksWith} Wochen`),
+    detailKpi("fm gekauft",fmGekauftSum,"fm",`${year} · Σ`),
+    detailKpi("fm geliefert",fmGeliefertSum,"fm",`${year} · Σ`),
+    detailKpi("Ø Einkaufspreis",avgPreis,"pricefm","Netto ÷ fm gekauft"),
+    detailKpi("Liefergrad",liefergrad,"percent","fm geliefert ÷ fm gekauft")
+  ].join("");
+  const labels=rows.map(row=>`KW${row.week}`);
+  lineChart("einkaufPriceChart",labels,[
+    {name:"Ø Einkaufspreis (€/fm)",values:rows.map(purchasingAvgPreis),format:value=>format(value,"pricefm")}
+  ],{zero:false,tick:value=>fmt2.format(value)});
+  lineChart("einkaufQtyChart",labels,[
+    {name:"fm gekauft",values:rows.map(row=>n(row.fmGekauft)),format:value=>format(value,"fm")},
+    {name:"fm geliefert",values:rows.map(row=>n(row.fmGeliefert)),format:value=>format(value,"fm")}
+  ],{zero:true,tick:value=>fmt0.format(value)});
+  const combo=purchasingSalesSeries().filter(point=>point.umsatz!==null&&point.fmGeliefert!==null);
+  const comboSub=document.getElementById("einkaufComboSub");
+  if(!combo.length){
+    lineChart("einkaufComboChart",[],[]);
+    if(comboSub)comboSub.textContent=`Für den Vergleich Einkauf ↔ Umsatz müssen Wochenberichte (Umsatz) für ${year} geladen sein.`;
+  }else{
+    const baseU=combo[0].umsatz,baseF=combo[0].fmGeliefert;
+    lineChart("einkaufComboChart",combo.map(point=>`KW${point.week}`),[
+      {name:"Umsatz (Index)",values:combo.map(point=>baseU?point.umsatz/baseU*100:null),format:value=>value===null?"–":fmt0.format(value)},
+      {name:"fm geliefert (Index)",values:combo.map(point=>baseF?point.fmGeliefert/baseF*100:null),format:value=>value===null?"–":fmt0.format(value)}
+    ],{zero:false,tick:value=>fmt0.format(value)});
+    const wSum=combo.reduce((total,point)=>total+point.umsatz,0),fSum=combo.reduce((total,point)=>total+point.fmGeliefert,0);
+    if(comboSub)comboSub.textContent=`${combo.length} gemeinsame Wochen · Umsatz je fm geliefert (gewichtet) ${format(fSum?wSum/fSum:null,"pricefm")} · Linien indexiert auf die erste gemeinsame Woche = 100.`;
+  }
+  const tableRows=rows.map(row=>({
+    "KW":`KW${row.week}`,"Netto (€)":n(row.netto),"fm gekauft":n(row.fmGekauft),
+    "fm geliefert":n(row.fmGeliefert),"Ø Preis (€/fm)":purchasingAvgPreis(row)
+  }));
+  renderTable("einkaufTable",tableRows,[
+    ["KW","text"],["Netto (€)","currency"],["fm gekauft","fm"],["fm geliefert","fm"],["Ø Preis (€/fm)","pricefm"]
   ]);
 }
 
@@ -2715,6 +2779,21 @@ function statisticsModuleMarkup(item){
   let body="";
   if(!def){
     body='<div class="statistics-module-warning">Die gespeicherte Kennzahl ist in den aktuellen Daten nicht mehr verfügbar.</div>';
+  }else if(def.mode==="combo"){
+    const stats=statisticsComboSummary(item);
+    if(!stats.points.length){
+      body=`<div class="statistics-module-warning">Für einen Vergleich müssen Wochenberichte (Umsatz) und Einkaufsdaten für dasselbe Jahr und dieselben Kalenderwochen vorliegen.</div>
+        <div class="statistics-module-chart"><div class="chart" id="stat-chart-${esc(item.id)}"></div></div>`;
+    }else{
+      body=`<div class="statistics-module-summary">
+        <div class="statistics-module-stat"><small>Umsatz je fm gel.</small><strong>${format(stats.latest,"pricefm")}</strong></div>
+        <div class="statistics-module-stat"><small>Ø Verhältnis</small><strong>${format(stats.avg,"pricefm")}</strong></div>
+        <div class="statistics-module-stat"><small>Gewichtet</small><strong>${format(stats.weighted,"pricefm")}</strong></div>
+        <div class="statistics-module-stat"><small>Veränderung %</small><strong>${statisticsPercentText(stats.changePct)}</strong></div>
+      </div>
+      <div class="statistics-module-note">${stats.points.length} gemeinsame Wochen · Umsatz Σ ${format(stats.umsatzSum,"currency")} · fm geliefert Σ ${format(stats.fmSum,"fm")} · Linien indexiert (erste Woche = 100)</div>
+      <div class="statistics-module-chart"><div class="chart" id="stat-chart-${esc(item.id)}"></div></div>`;
+    }
   }else if(String(item.period)==="free"){
     const w=statisticsFreeWindowOf(item);
     const stats=statisticsFreeSummary(def,item);
@@ -2789,6 +2868,17 @@ function renderStatisticsModuleChart(item){
   const def=resolveKpiDefinition(item.metric);
   const target=`stat-chart-${item.id}`;
   if(!def||!document.getElementById(target))return;
+  if(def.mode==="combo"){
+    const points=comboWindowedPoints(item);
+    if(!points.length){lineChart(target,[],[]);return;}
+    const baseU=points[0].umsatz,baseF=points[0].fmGeliefert;
+    const idx=(value,base)=>(value!==null&&base)?value/base*100:null;
+    lineChart(target,points.map(point=>`KW${point.week}`),[
+      {name:"Umsatz (Index)",values:points.map(point=>idx(point.umsatz,baseU)),format:value=>value===null?"–":fmt0.format(value)},
+      {name:"fm geliefert (Index)",values:points.map(point=>idx(point.fmGeliefert,baseF)),format:value=>value===null?"–":fmt0.format(value)}
+    ],{zero:false,tick:value=>fmt0.format(value)});
+    return;
+  }
   if(String(item.period)==="free"){
     const stats=statisticsFreeSummary(def,item);
     if(!stats.series.length){lineChart(target,[],[]);return;}
@@ -2965,7 +3055,7 @@ function renderTable(id,rows,cols){
   el.innerHTML=`<thead><tr>${cols.map(c=>`<th>${esc(c[0])}</th>`).join("")}</tr></thead><tbody>${rows.map(r=>`<tr>${cols.map(([key,type])=>{
     let val=r[key],content;
     if(type==="badge"){const cl=val==="Hoch"?"high":val==="Mittel"?"warn":"low";content=`<span class="badge ${cl}">${esc(val)}</span>`}
-    else if(["m3","fm","price","currency","percent","pctpoint"].includes(type))content=format(val,type);
+    else if(["m3","fm","price","pricefm","currency","percent","pctpoint"].includes(type))content=format(val,type);
     else if(type==="productionValue"){
       const unit=r.Einheit==="m³"?"m3":"fm";content=format(val,unit);
     }
@@ -2974,7 +3064,7 @@ function renderTable(id,rows,cols){
     }
     else if(type==="number")content=val===null||val===undefined?"–":fmtNum.format(val);
     else content=esc(val??"");
-    const numeric=type==="number"||["m3","fm","price","currency","percent","pctpoint","productionValue","productionDelta"].includes(type);
+    const numeric=type==="number"||["m3","fm","price","pricefm","currency","percent","pctpoint","productionValue","productionDelta"].includes(type);
     const indent=type==="salesCategory"&&String(val).toLowerCase().startsWith("davon ")?" sales-indent":"";
     return `<td class="${numeric?"num":""}${indent}">${content}</td>`
   }).join("")}</tr>`).join("")}</tbody>`;
@@ -3610,6 +3700,58 @@ function datasetSeries(rows,weekField,valueField,filterFn=()=>true){
     row
   })).filter(point=>Number.isFinite(point.week)).sort((a,b)=>a.week-b.week);
 }
+/* ---------- Einkauf (Einkauf.xlsx) ---------- */
+function purchasingRowsActive(){
+  return (DATA.purchasing||[]).slice().sort((a,b)=>Number(a.week)-Number(b.week));
+}
+function purchasingAvgPreis(row){
+  const netto=n(row?.netto),fm=n(row?.fmGekauft);
+  return (netto!==null&&fm)?netto/fm:null;
+}
+function weeklyRevenue(row){
+  const menge=n(row?.["Umsatzmenge gesamt (m³)"]),preis=n(row?.["Ø Preis gesamt (€/m³)"]);
+  return (menge!==null&&preis!==null)?menge*preis:null;
+}
+/* Gemeinsame Wochen von Umsatz (Wochenbericht) und Einkauf (fm geliefert) des aktiven Jahres. */
+function purchasingSalesSeries(){
+  const map=new Map();
+  (DATA.purchasing||[]).forEach(row=>map.set(Number(row.week),row));
+  return (DATA.weekly||[]).map(row=>{
+    const week=Number(row["KW Nr."]);
+    const purchase=map.get(week);
+    const umsatz=weeklyRevenue(row);
+    const fmGeliefert=purchase?n(purchase.fmGeliefert):null;
+    const ratio=(umsatz!==null&&fmGeliefert!==null&&fmGeliefert!==0)?umsatz/fmGeliefert:null;
+    return {week,umsatz,fmGeliefert,ratio};
+  }).filter(point=>Number.isFinite(point.week)).sort((a,b)=>a.week-b.week);
+}
+/* Auf das gewählte Zeitfenster eingeschränkte gemeinsame Wochen (für Kombi-Statistikmodule). */
+function comboWindowedPoints(item){
+  let points=purchasingSalesSeries().filter(point=>point.ratio!==null);
+  const period=String(item.period);
+  if(period==="free"){
+    const w=statisticsFreeWindowOf(item),lo=Math.min(w.fromWeek,w.toWeek),hi=Math.max(w.fromWeek,w.toWeek);
+    points=points.filter(point=>point.week>=lo&&point.week<=hi);
+  }else if(period==="yoy"){
+    points=points.filter(point=>point.week<=Number(item.endWeek));
+  }else{
+    const limit=Number(period)||points.length;
+    points=points.filter(point=>point.week<=Number(item.endWeek)).slice(-limit);
+  }
+  return points;
+}
+function statisticsComboSummary(item){
+  const points=comboWindowedPoints(item);
+  const ratios=points.map(point=>point.ratio).filter(value=>value!==null&&Number.isFinite(value));
+  const latest=points.length?points.at(-1).ratio:null;
+  const first=ratios.length?ratios[0]:null;
+  const umsatzSum=points.reduce((sum,point)=>sum+(point.umsatz||0),0);
+  const fmSum=points.reduce((sum,point)=>sum+(point.fmGeliefert||0),0);
+  const change=(latest!==null&&first!==null)?latest-first:null;
+  const changePct=first?change/Math.abs(first):null;
+  return {points,latest,avg:statisticsAverage(ratios),change,changePct,umsatzSum,fmSum,weighted:fmSum?umsatzSum/fmSum:null};
+}
+
 function kpiCatalog(){
   const entries=[];
   const add=entry=>entries.push(entry);
@@ -3733,6 +3875,28 @@ function kpiCatalog(){
     group:"Datenqualität",mode:"quality-card",type:"number",
     staticRow:row,series:()=>[]
   }));
+
+  // Einkauf (Stammdaten des im Kopf gewählten Jahres)
+  const purchasingMetrics=[
+    ["einkauf::netto","Einkaufswert netto (€)","currency",row=>n(row.netto)],
+    ["einkauf::fmGekauft","fm gekauft","fm",row=>n(row.fmGekauft)],
+    ["einkauf::fmGeliefert","fm geliefert","fm",row=>n(row.fmGeliefert)],
+    ["einkauf::avgPreis","Ø Einkaufspreis (€/fm)","pricefm",row=>purchasingAvgPreis(row)]
+  ];
+  purchasingMetrics.forEach(([id,label,type,pick])=>add({
+    id,label,group:"Einkauf",mode:"numeric",type,
+    series:()=>(DATA.purchasing||[]).map(row=>({week:Number(row.week),value:pick(row)})).filter(point=>Number.isFinite(point.week)).sort((a,b)=>a.week-b.week)
+  }));
+
+  // Einkauf ↔ Umsatz: Umsatz je gelieferten Festmeter (Verhältnis Verkauf/Einkauf) und Bausteine
+  add({
+    id:"combo::umsatzErloes",label:"Umsatz gesamt (€/KW)",group:"Einkauf ↔ Umsatz",mode:"numeric",type:"currency",
+    series:()=>purchasingSalesSeries().map(point=>({week:point.week,value:point.umsatz})).filter(point=>point.value!==null)
+  });
+  add({
+    id:"combo::umsatz-fmgeliefert",label:"Umsatz je fm geliefert (€/fm)",group:"Einkauf ↔ Umsatz",mode:"combo",type:"pricefm",
+    series:()=>purchasingSalesSeries().map(point=>({week:point.week,value:point.ratio})).filter(point=>point.value!==null)
+  });
 
   return entries;
 }
@@ -5166,7 +5330,7 @@ function renderInfrastructure(){
 function updateAll(){
   renderCountryPoints();
   if(typeof renderAssistantStatic==="function"&&document.getElementById("assistantExamples"))renderAssistantStatic();
-  renderSales();renderProduction();renderSawline();renderKpis();renderOverviewCharts();renderTrends();renderAnnual();renderStatisticsBoard();renderQuality();
+  renderSales();renderEinkauf();renderProduction();renderSawline();renderKpis();renderOverviewCharts();renderTrends();renderAnnual();renderStatisticsBoard();renderQuality();
   renderLand();renderCountryComparison();renderWorldMap();renderDetails();renderHistory();renderInfrastructure();
   renderKpiWorkspace();
   applyClosableStandardWindows();

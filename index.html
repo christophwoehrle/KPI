@@ -1600,6 +1600,7 @@ body.monitor-mode .nav button[data-action="monitor"]{
       <button data-view="assistant">Fragen & Analyse</button>
       <button data-view="history">Historie</button>
       <button data-view="sales">Umsatz</button>
+      <button data-view="einkauf">Einkauf</button>
       <button data-view="production">Produktion</button>
       <button data-view="sawline"><span class="saw-nav-icon" aria-hidden="true"></span>Sägelinie</button>
       <button data-view="overview">Übersicht</button>
@@ -1841,6 +1842,31 @@ body.monitor-mode .nav button[data-action="monitor"]{
         <div class="card-sub">Hauptware Säge bis Handel SH</div>
         <div class="table-wrap"><table id="salesTable"></table></div>
       </div>
+    </div>
+  </section>
+
+  <section class="view" id="einkauf">
+    <div class="section-head">
+      <div>
+        <h2>Einkauf</h2>
+        <p>Wocheneinkauf aus <em>Einkauf.xlsx</em>: Netto-Einkaufswert, gekaufte und gelieferte Festmeter sowie der Ø-Einkaufspreis (€/fm) je Kalenderwoche. Das im Kopf gewählte Jahr steuert die Anzeige.</p>
+      </div>
+      <span class="chip" id="einkaufScope">Einkauf</span>
+    </div>
+    <div class="kpi-grid" id="einkaufKpis"></div>
+    <div class="grid-2">
+      <div class="card"><h3>Ø-Einkaufspreis je KW</h3><div class="card-sub" id="einkaufPriceSub">Netto geteilt durch gekaufte Festmeter (€/fm)</div><div class="chart" id="einkaufPriceChart"></div></div>
+      <div class="card"><h3>Menge je KW</h3><div class="card-sub" id="einkaufQtySub">Gekaufte gegenüber gelieferten Festmetern</div><div class="chart" id="einkaufQtyChart"></div></div>
+    </div>
+    <div class="card">
+      <h3>Einkauf ↔ Umsatz</h3>
+      <div class="card-sub" id="einkaufComboSub">Umsatz (€) und gelieferte Festmeter je KW, indexiert auf die erste gemeinsame Woche = 100. Kennzahl unten: Umsatz je gelieferten Festmeter (€/fm).</div>
+      <div class="chart" id="einkaufComboChart"></div>
+    </div>
+    <div class="card">
+      <h3>Einkauf je Kalenderwoche</h3>
+      <div class="card-sub">Netto-Einkaufswert, fm gekauft, fm geliefert und Ø-Preis (€/fm)</div>
+      <div class="table-wrap"><table id="einkaufTable"></table></div>
     </div>
   </section>
 
@@ -2335,6 +2361,7 @@ body.monitor-mode .nav button[data-action="monitor"]{
 <script src="dashboard-sales.js"></script>
 <script src="dashboard-country.js"></script>
 <script src="dashboard-sawline.js"></script>
+<script src="dashboard-einkauf.js"></script>
 <script src="dashboard-data.js"></script>
 <script src="dashboard.js"></script>
 </body>
