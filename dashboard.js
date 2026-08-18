@@ -2349,15 +2349,15 @@ function renderSawline(){
    Pro Verladung können maximal 40 m³ geladen werden. Die Verladekapazität
    einer Woche ist damit Anzahl Verladungen × 40 = X. Die Umsatzmenge gesamt
    kann nicht größer sein als diese Kapazität – sonst wären je Verladung mehr
-   als 40 m³ transportiert worden. Toleranz: 10 %. */
+   als 40 m³ transportiert worden. Toleranz: 1 %. */
 const SHIPMENT_MAX_M3=40;
-const SHIPMENT_TOLERANCE=0.10;
+const SHIPMENT_TOLERANCE=0.01;
 function shipmentPlausibility(weekly){
   const verladungen=n(weekly&&weekly["Verladungen gesamt"]);
   const umsatz=n(weekly&&weekly["Umsatzmenge gesamt (m³)"]);
   if(verladungen===null||umsatz===null)return null;   // nicht prüfbar
   const x=verladungen*SHIPMENT_MAX_M3;                 // Verladekapazität
-  const limit=x*(1+SHIPMENT_TOLERANCE);                // Kapazität inkl. 10 % Toleranz
+  const limit=x*(1+SHIPMENT_TOLERANCE);                // Kapazität inkl. 1 % Toleranz
   return {ok:umsatz<=limit,x,umsatz,verladungen,limit};
 }
 /* Plausibilität über mehrere Wochen (Summe Verladungen bzw. Umsatzmenge). */
@@ -2385,7 +2385,7 @@ function renderSalesPlausibility(weeks){
   host.hidden=false;
   host.className=`plausi-banner ${p.ok?"plausi-ok":"plausi-bad"}`;
   const detail=`Umsatzmenge ${format(p.umsatz,"m3")} ${p.ok?"≤":">"} Verladekapazität `+
-    `(${fmt0.format(p.verladungen)} Verladungen × ${SHIPMENT_MAX_M3} m³ = ${format(p.x,"m3")}) + 10 % Toleranz (${format(p.limit,"m3")})`;
+    `(${fmt0.format(p.verladungen)} Verladungen × ${SHIPMENT_MAX_M3} m³ = ${format(p.x,"m3")}) + 1 % Toleranz (${format(p.limit,"m3")})`;
   host.innerHTML=`<span class="plausi-icon">${p.ok?"✓":"✗"}</span>`+
     `<div class="plausi-text"><strong>${p.ok?"Prüfung OK":"Prüfung NICHT OK"}</strong> · ${scope}`+
     `<div class="plausi-detail">${detail}</div></div>`;
@@ -5603,7 +5603,7 @@ function infraCheckCell(ok){return `<td class="infra-check ${ok?"infra-ok":"infr
 function infraPlausiCell(weekly){
   const p=shipmentPlausibility(weekly);
   if(!p)return `<td class="infra-check infra-neutral" title="nicht prüfbar – Verladungen oder Umsatzmenge fehlt">–</td>`;
-  const title=`Umsatzmenge ${fmtNum.format(p.umsatz)} m³ ${p.ok?"≤":">"} Verladekapazität ${fmt0.format(p.verladungen)} × 40 = ${fmtNum.format(p.x)} m³ + 10 % (${fmtNum.format(p.limit)} m³)`;
+  const title=`Umsatzmenge ${fmtNum.format(p.umsatz)} m³ ${p.ok?"≤":">"} Verladekapazität ${fmt0.format(p.verladungen)} × 40 = ${fmtNum.format(p.x)} m³ + 1 % (${fmtNum.format(p.limit)} m³)`;
   return `<td class="infra-check ${p.ok?"infra-ok":"infra-bad"}" title="${esc(title)}">${p.ok?"✓":"✗"}</td>`;
 }
 function renderInfrastructure(){
@@ -5626,7 +5626,7 @@ function renderInfrastructure(){
         <td class="infra-file">${esc(b.fileName||`KW-${String(b.week).padStart(2,"0")}-${b.year}.xlsx`)}</td>
         ${checks}${infraPlausiCell(b.weekly)}</tr>`;
     }).join("");
-    weeklyTable.innerHTML=`<thead><tr><th>Jahr</th><th>KW</th><th>Datei</th>${kpiHead}<th class="infra-kpi infra-plausi" title="Anzahl Verladungen × 40 m³ darf die Umsatzmenge (+10 % Toleranz) nicht übersteigen">Plausibilität Verladung</th></tr></thead><tbody>${body}</tbody>`;
+    weeklyTable.innerHTML=`<thead><tr><th>Jahr</th><th>KW</th><th>Datei</th>${kpiHead}<th class="infra-kpi infra-plausi" title="Anzahl Verladungen × 40 m³ darf die Umsatzmenge (+1 % Toleranz) nicht übersteigen">Plausibilität Verladung</th></tr></thead><tbody>${body}</tbody>`;
     const fullyClean=bundles.filter(b=>INFRA_WEEKLY_KPIS.every(k=>{try{return !!k[1](b);}catch(e){return false;}})).length;
     const plausiResults=bundles.map(b=>shipmentPlausibility(b.weekly)).filter(Boolean);
     const plausiOk=plausiResults.filter(p=>p.ok).length;
