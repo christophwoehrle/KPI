@@ -96,6 +96,15 @@ main{max-width:none;margin:0 auto;padding:22px 32px 50px}
 .kpi-head,.card-title-row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
 .kpi-label{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:750}
 .kpi-window-tag{flex:none;font-size:12px;font-weight:800;color:#237a34;background:#eef7ea;border:1px solid #cfe8bf;border-radius:6px;padding:2px 9px;line-height:1.6}
+.compare-card{margin-bottom:18px}
+.compare-controls{display:flex;flex-wrap:wrap;gap:12px;margin:8px 0 14px}
+.compare-controls .control{flex:1 1 190px;min-width:150px}
+.compare-controls .control label{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:750;margin-bottom:5px}
+.compare-controls .control select{width:100%;border:1px solid var(--line);background:#fff;color:var(--navy);border-radius:9px;padding:8px 10px}
+.cmp-swatch{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:7px;vertical-align:middle}
+#cmpTable{width:100%;border-collapse:collapse;margin-top:6px;font-size:13px}
+#cmpTable th,#cmpTable td{padding:6px 10px;border-bottom:1px solid var(--line);text-align:left}
+#cmpTable td.num,#cmpTable th.num{text-align:right}
 .kpi-week-select,.local-week-select{
   min-width:76px;border:1px solid var(--line);background:var(--ice);color:var(--navy);
   border-radius:8px;padding:5px 7px;font-size:12px;font-weight:750;outline:none;cursor:pointer
@@ -2051,6 +2060,34 @@ body.monitor-mode .nav button[data-action="monitor"]{
         <p>Individuelle Statistikmodule aus dem allgemeinen Wochenbericht KW-XX-20XX.xlsx auswählen, anordnen und je Modul auswerten.</p>
       </div>
       <span class="chip">Modullayout wird lokal gespeichert</span>
+    </div>
+
+    <div class="card compare-card">
+      <div class="card-title-row">
+        <div>
+          <h3>Mehrfachvergleich · bis zu 4 Datensätze</h3>
+          <div class="card-sub" id="cmpSub">Beliebige Kennzahlen mit Kalenderwochen-Achse gemeinsam in einem Schaubild vergleichen.</div>
+        </div>
+      </div>
+      <div class="compare-controls">
+        <div class="control"><label>Auswahl 1</label><select id="cmpMetric1"></select></div>
+        <div class="control"><label>Auswahl 2</label><select id="cmpMetric2"></select></div>
+        <div class="control"><label>Auswahl 3</label><select id="cmpMetric3"></select></div>
+        <div class="control"><label>Auswahl 4</label><select id="cmpMetric4"></select></div>
+        <div class="control"><label>Zeithorizont</label><select id="cmpHorizon">
+          <option value="all">Alle Kalenderwochen</option>
+          <option value="4">4 Wochen</option>
+          <option value="13">3 Monate</option>
+          <option value="26">6 Monate</option>
+          <option value="ytd">YTD</option>
+        </select></div>
+        <div class="control"><label>Darstellung</label><select id="cmpMode">
+          <option value="abs">Absolutwerte</option>
+          <option value="idx">Indexiert (erste Woche = 100)</option>
+        </select></div>
+      </div>
+      <div class="chart" id="cmpChart"></div>
+      <div class="table-wrap"><table id="cmpTable"></table></div>
     </div>
 
     <div class="statistics-builder-toolbar">

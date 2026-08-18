@@ -1900,6 +1900,7 @@ function initControls(){
   productionMetric.addEventListener("change",renderProduction);
   rebuildSawlineSelectors();
   initStatisticsBoard(weeks);
+  initComparison();
   sawlineWeek.addEventListener("change",renderSawline);
   sawlineMetric.addEventListener("change",renderSawline);
   sawlinePrevBtn.addEventListener("click",()=>stepSawlineWeek(-1));
@@ -3204,6 +3205,131 @@ function renderStatisticsBoard(){
   statisticsWorkspace.style.height=Math.max(740,...statisticsModules.map(item=>item.y+item.h+30))+"px";
   statisticsWorkspace.querySelectorAll(".statistics-module-window").forEach(bindStatisticsModule);
   statisticsModules.forEach(renderStatisticsModuleChart);
+}
+
+/* ---------- Mehrfachvergleich (bis zu 4 KW-basierte Datensätze) ---------- */
+const COMPARE_STORAGE_KEY="kwDashboardCompareV1";
+const COMPARE_UNIT={m3:"m³",fm:"fm",price:"€/m³",pricefm:"€/fm",currency:"€",percent:"%",pctpoint:"%",lfm:"lfm",pieces:"Stück",minutes:"min",fmmin:"fm/min",m3min:"m³/min",number:""};
+let comparisonState={metrics:["","","",""],horizon:"all",mode:"abs"};
+function loadComparisonState(){
+  try{const s=JSON.parse(storageGet(COMPARE_STORAGE_KEY)||"null");
+    if(s&&Array.isArray(s.metrics)){comparisonState={metrics:(s.metrics.concat(["","","",""])).slice(0,4),horizon:s.horizon||"all",mode:s.mode||"abs"};}
+  }catch(e){}
+}
+function saveComparisonState(){storageSet(COMPARE_STORAGE_KEY,JSON.stringify(comparisonState));}
+function comparisonHorizonWeeks(allWeeks,horizon){
+  const sorted=[...new Set(allWeeks)].sort((a,b)=>a-b);
+  if(!sorted.length)return [];
+  if(horizon==="all"||horizon==="ytd")return sorted;
+  const count=Number(horizon)||sorted.length;
+  return sorted.slice(-count);
+}
+function populateComparisonSelects(){
+  const defs=statisticsDefinitions();
+  const groups=[...new Set(defs.map(d=>d.group))];
+  [1,2,3,4].forEach(slot=>{
+    const sel=document.getElementById("cmpMetric"+slot);
+    if(!sel)return;
+    let cur=comparisonState.metrics[slot-1]||"";
+    if(cur&&!defs.some(d=>d.id===cur)){cur="";comparisonState.metrics[slot-1]="";}
+    const includeEmpty=slot>=3||!cur;   // Slots 3/4 optional; leere Option auch, wenn nichts gewählt
+    const empty=includeEmpty?`<option value="">— keine —</option>`:"";
+    sel.innerHTML=empty+groups.map(g=>`<optgroup label="${esc(g)}">${defs.filter(d=>d.group===g).map(d=>`<option value="${esc(d.id)}" ${d.id===cur?"selected":""}>${esc(d.label)}</option>`).join("")}</optgroup>`).join("");
+    sel.value=cur;
+  });
+}
+function renderComparison(){
+  const chart=document.getElementById("cmpChart");
+  if(!chart)return;
+  populateComparisonSelects();
+  const horizon=(document.getElementById("cmpHorizon")||{}).value||comparisonState.horizon;
+  const mode=(document.getElementById("cmpMode")||{}).value||comparisonState.mode;
+  comparisonState.horizon=horizon;comparisonState.mode=mode;
+  // gewählte, eindeutige Datensätze (max 4)
+  const picked=[];
+  comparisonState.metrics.forEach(id=>{
+    if(!id||picked.some(p=>p.id===id))return;
+    const def=resolveKpiDefinition(id);
+    if(def&&typeof def.series==="function")picked.push(def);
+  });
+  const sub=document.getElementById("cmpSub");
+  const table=document.getElementById("cmpTable");
+  if(!picked.length){
+    lineChart("cmpChart",[],[]);
+    if(table)table.innerHTML="";
+    if(sub)sub.textContent="Beliebige Kennzahlen mit Kalenderwochen-Achse gemeinsam in einem Schaubild vergleichen – bitte mindestens einen Datensatz wählen.";
+    return;
+  }
+  // Wochen-Wertetabellen je Datensatz
+  const seriesMaps=picked.map(def=>{
+    const map=new Map();
+    try{def.series().forEach(p=>{if(Number.isFinite(p.week)&&p.value!==null&&Number.isFinite(Number(p.value)))map.set(Number(p.week),Number(p.value));});}catch(e){}
+    return map;
+  });
+  const allWeeks=[...new Set(seriesMaps.flatMap(m=>[...m.keys()]))];
+  const weeks=comparisonHorizonWeeks(allWeeks,horizon);
+  if(!weeks.length){
+    lineChart("cmpChart",[],[]);
+    if(table)table.innerHTML="";
+    if(sub)sub.textContent="Für die gewählten Datensätze liegen keine gemeinsamen Kalenderwochen vor.";
+    return;
+  }
+  const labels=weeks.map(w=>`KW${w}`);
+  const series=picked.map((def,i)=>{
+    const map=seriesMaps[i];
+    const raw=weeks.map(w=>map.has(w)?map.get(w):null);
+    const base=raw.find(v=>v!==null&&Number.isFinite(v));
+    const values=mode==="idx"
+      ? raw.map(v=>(v!==null&&base)?v/base*100:null)
+      : raw;
+    return {name:def.label,color:colors[i%colors.length],type:def.type,raw,
+      values,format:mode==="idx"?(v=>v===null?"–":fmtNum.format(v)+" %"):(v=>format(v,def.type))};
+  });
+  lineChart("cmpChart",labels,series,{zero:false,tick:value=>fmtNum.format(value)});
+  // Wertetabelle je Datensatz
+  if(table){
+    const rows=series.map(s=>{
+      const valid=s.raw.filter(v=>v!==null&&Number.isFinite(v));
+      const first=valid[0]??null,last=valid.at(-1)??null;
+      const avg=valid.length?valid.reduce((a,b)=>a+b,0)/valid.length:null;
+      const deltaPct=(first!==null&&last!==null&&first!==0)?(last-first)/Math.abs(first):null;
+      const unit=COMPARE_UNIT[s.type]||"";
+      return `<tr>
+        <td><span class="cmp-swatch" style="background:${s.color}"></span>${esc(s.name)}</td>
+        <td>${esc(unit)}</td>
+        <td class="num">${format(first,s.type)}</td>
+        <td class="num">${format(last,s.type)}</td>
+        <td class="num">${format(avg,s.type)}</td>
+        <td class="num">${deltaPct===null?"–":(deltaPct>=0?"+":"")+format(deltaPct,"percent")}</td>
+      </tr>`;
+    }).join("");
+    table.innerHTML=`<thead><tr><th>Datensatz</th><th>Einheit</th><th>Start</th><th>Aktuell</th><th>Ø</th><th>Δ %</th></tr></thead><tbody>${rows}</tbody>`;
+  }
+  if(sub){
+    const hLabel={all:"Alle Kalenderwochen","4":"4 Wochen","13":"3 Monate","26":"6 Monate",ytd:"YTD"}[horizon]||"Zeitraum";
+    const modeLabel=mode==="idx"?"indexiert (erste Woche = 100)":"Absolutwerte";
+    sub.textContent=`${picked.length} ${picked.length===1?"Datensatz":"Datensätze"} · ${hLabel} · KW${weeks[0]}–KW${weeks[weeks.length-1]} (${weeks.length} Wochen) · ${modeLabel}`;
+  }
+}
+function initComparison(){
+  if(!document.getElementById("cmpChart"))return;
+  loadComparisonState();
+  populateComparisonSelects();
+  // Standard: erste zwei verfügbaren Datensätze vorbelegen, falls noch nichts gewählt
+  const defs=statisticsDefinitions();
+  if(!comparisonState.metrics.some(Boolean)&&defs.length){
+    comparisonState.metrics[0]=defs[0].id;
+    if(defs[1])comparisonState.metrics[1]=defs[1].id;
+    populateComparisonSelects();
+  }
+  const hSel=document.getElementById("cmpHorizon");if(hSel)hSel.value=comparisonState.horizon;
+  const mSel=document.getElementById("cmpMode");if(mSel)mSel.value=comparisonState.mode;
+  [1,2,3,4].forEach(slot=>{
+    const sel=document.getElementById("cmpMetric"+slot);
+    if(sel)sel.addEventListener("change",()=>{comparisonState.metrics[slot-1]=sel.value;saveComparisonState();renderComparison();});
+  });
+  if(hSel)hSel.addEventListener("change",()=>{comparisonState.horizon=hSel.value;saveComparisonState();renderComparison();});
+  if(mSel)mSel.addEventListener("change",()=>{comparisonState.mode=mSel.value;saveComparisonState();renderComparison();});
 }
 function refreshStatisticsAfterDataChange(){
   if(!document.getElementById("statisticsBuilderGroup"))return;
@@ -5544,7 +5670,7 @@ function updateAll(){
   renderCountryPoints();
   if(typeof renderAssistantStatic==="function"&&document.getElementById("assistantExamples"))renderAssistantStatic();
   renderSales();renderEinkauf();renderProduction();renderSawline();renderKpis();renderOverviewCharts();renderTrends();renderAnnual();renderStatisticsBoard();renderQuality();
-  renderLand();renderCountryComparison();renderWorldMap();renderDetails();renderHistory();renderInfrastructure();
+  renderLand();renderCountryComparison();renderWorldMap();renderDetails();renderHistory();renderInfrastructure();renderComparison();
   renderKpiWorkspace();
   applyClosableStandardWindows();
   const hint=document.getElementById("emptyDataHint");
