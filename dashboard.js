@@ -641,6 +641,7 @@ function deleteAllUploads(){
     : "Es sind keine hochgeladenen Dateien gespeichert. Das Dashboard trotzdem auf den Ursprungsstand zurücksetzen?";
   if(!confirm(msg))return;
   storageRemove(IMPORT_STORAGE_KEY);
+  storageRemove(PURCHASING_STORAGE_KEY);   // hochgeladene Einkaufsdaten verwerfen, Stammdatensatz bleibt
   // In-Memory-Stände der Historie zurücksetzen (werden beim Neuladen frisch aus den Seed-Daten gebildet)
   DATA.weeklyHistory=null;DATA.salesHistory=null;
   historyResetDatasets();
@@ -1901,6 +1902,11 @@ function initControls(){
   rebuildSawlineSelectors();
   initStatisticsBoard(weeks);
   initComparison();
+  const einkaufUploadBtn=document.getElementById("einkaufUploadBtn"),einkaufUpload=document.getElementById("einkaufUpload");
+  if(einkaufUploadBtn&&einkaufUpload){
+    einkaufUploadBtn.addEventListener("click",()=>einkaufUpload.click());
+    einkaufUpload.addEventListener("change",event=>{if(event.target.files&&event.target.files[0])importEinkaufFile(event.target.files[0]);});
+  }
   sawlineWeek.addEventListener("change",renderSawline);
   sawlineMetric.addEventListener("change",renderSawline);
   sawlinePrevBtn.addEventListener("click",()=>stepSawlineWeek(-1));
@@ -2555,6 +2561,85 @@ function renderEinkauf(){
   renderTable("einkaufTable",tableRows,[
     ["KW","text"],["Netto (€)","currency"],["fm gekauft","fm"],["fm geliefert","fm"],["Ø Preis (€/fm)","pricefm"]
   ]);
+}
+
+/* ---------- Einkauf-Upload (aktuellste Einkauf.xlsx) ---------- */
+const PURCHASING_STORAGE_KEY="kwDashboardPurchasingV1";
+function purchasingKey(row){return `${Number(row.year)}|${Number(row.week)}`;}
+function mergePurchasingRecords(base,extra){
+  const map=new Map();
+  (base||[]).forEach(row=>map.set(purchasingKey(row),row));
+  (extra||[]).forEach(row=>map.set(purchasingKey(row),row));
+  return [...map.values()].sort((a,b)=>Number(a.year)-Number(b.year)||Number(a.week)-Number(b.week));
+}
+function applyStoredPurchasing(){
+  try{
+    const stored=JSON.parse(storageGet(PURCHASING_STORAGE_KEY)||"null");
+    if(Array.isArray(stored)&&stored.length)DATA.purchasingHistory=mergePurchasingRecords(DATA.purchasingHistory,stored);
+  }catch(error){console.warn("Gespeicherte Einkaufsdaten konnten nicht geladen werden",error);}
+}
+/* Label-verankerter Parser für Einkauf.xlsx: findet Kopfzeile mit „Datum" und
+   je Datum-Block die Spalten Netto gekauft, fm gekauft, fm geliefert. */
+function parseEinkaufWorkbook(matrix){
+  const norm=v=>String(v==null?"":v).trim().toLowerCase();
+  let headerRow=-1;
+  for(let r=0;r<Math.min(matrix.length,20);r++){
+    if((matrix[r]||[]).some(c=>norm(c)==="datum")){headerRow=r;break;}
+  }
+  if(headerRow<0)throw new Error("Kopfzeile mit „Datum“ nicht gefunden.");
+  const header=matrix[headerRow]||[];
+  const datumCols=[];
+  header.forEach((c,i)=>{if(norm(c)==="datum")datumCols.push(i);});
+  if(!datumCols.length)throw new Error("Spalte „Datum“ nicht gefunden.");
+  const numAt=(r,c)=>{const v=matrix[r]?.[c];if(v==null||v==="")return null;const num=Number(v);return Number.isFinite(num)?num:null;};
+  const records=[];
+  datumCols.forEach(dc=>{
+    const findCol=(pred,fallback)=>{for(let c=dc+1;c<=dc+4;c++){if(pred(norm(header[c])))return c;}return fallback;};
+    const nettoCol=findCol(h=>h.includes("netto"),dc+1);
+    const gekauftCol=findCol(h=>h.includes("gekauft")&&!h.includes("netto"),dc+2);
+    const geliefertCol=findCol(h=>h.includes("geliefert"),dc+3);
+    for(let r=headerRow+1;r<matrix.length;r++){
+      const datum=matrix[r]?.[dc];
+      if(datum==null)continue;
+      const m=String(datum).match(/(\d{4})\s*[\/\-]\s*(\d{1,2})/);
+      if(!m)continue;
+      const year=Number(m[1]),week=Number(m[2]);
+      if(!Number.isFinite(year)||!Number.isFinite(week)||week<1||week>53)continue;
+      const netto=numAt(r,nettoCol),fmGekauft=numAt(r,gekauftCol),fmGeliefert=numAt(r,geliefertCol);
+      if(netto===null&&fmGekauft===null&&fmGeliefert===null)continue;
+      records.push({year,week,netto,fmGekauft,fmGeliefert});
+    }
+  });
+  return records;
+}
+function setEinkaufUploadStatus(message,state=""){
+  const host=document.getElementById("einkaufUploadStatus");
+  if(!host)return;
+  host.hidden=!message;
+  host.textContent=message||"";
+  host.className="einkauf-upload-status"+(state?" "+state:"");
+}
+async function importEinkaufFile(file){
+  if(!file)return;
+  if(!/\.xlsx$/i.test(file.name)){setEinkaufUploadStatus("Bitte eine .xlsx-Datei auswählen.","error");return;}
+  setEinkaufUploadStatus(`„${file.name}“ wird gelesen …`,"working");
+  try{
+    const matrix=await readFirstWorksheet(file);
+    const records=parseEinkaufWorkbook(matrix);
+    if(!records.length)throw new Error("Keine Einkaufszeilen im Format „Jahr/KW“ gefunden.");
+    DATA.purchasingHistory=mergePurchasingRecords(DATA.purchasingHistory,records);
+    try{storageSet(PURCHASING_STORAGE_KEY,JSON.stringify(DATA.purchasingHistory));}catch(error){console.warn(error);}
+    projectDashboardYear(activeDashboardYear());
+    if(document.getElementById("displayWeek"))populateGlobalWeekScroller(Number(displayWeek.value));
+    updateAll();
+    const years=[...new Set(records.map(r=>r.year))].sort((a,b)=>a-b);
+    setEinkaufUploadStatus(`${records.length} Einkaufszeile(n) aus ${years.length} Jahr(en) (${years.join(", ")}) importiert und gespeichert.`,"success");
+  }catch(error){
+    console.error(error);
+    setEinkaufUploadStatus(`Import fehlgeschlagen: ${error.message}`,"error");
+  }
+  const input=document.getElementById("einkaufUpload");
+  if(input)input.value="";
 }
 
 function kpiCardWindow(label,value,type,scopeText,delta,mode){
@@ -5679,7 +5764,7 @@ function updateAll(){
     hint.hidden=!!hasData;
   }
 }
-loadClosedStandardWindows();historyInitStores();applyStoredImports();initControls();updateAll();
+loadClosedStandardWindows();historyInitStores();applyStoredPurchasing();applyStoredImports();initControls();updateAll();
 window.addEventListener("resize",()=>{clearTimeout(window.__rt);window.__rt=setTimeout(updateAll,120)});
 
 

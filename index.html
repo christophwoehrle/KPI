@@ -102,6 +102,11 @@ main{max-width:none;margin:0 auto;padding:22px 32px 50px}
 .compare-controls .control label{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:750;margin-bottom:5px}
 .compare-controls .control select{width:100%;border:1px solid var(--line);background:#fff;color:var(--navy);border-radius:9px;padding:8px 10px}
 .cmp-swatch{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:7px;vertical-align:middle}
+.einkauf-head-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.einkauf-upload-status{margin:2px 0 14px;padding:9px 14px;border-radius:10px;font-size:13px;border:1px solid var(--line);background:var(--panel)}
+.einkauf-upload-status.working{background:#fff7e6;border-color:#f2d493;color:#8a5a00}
+.einkauf-upload-status.success{background:#eef7ea;border-color:#bfe3ac;color:#237a34}
+.einkauf-upload-status.error{background:#fdecec;border-color:#f2b6b6;color:#b02525}
 #cmpTable{width:100%;border-collapse:collapse;margin-top:6px;font-size:13px}
 #cmpTable th,#cmpTable td{padding:6px 10px;border-bottom:1px solid var(--line);text-align:left}
 #cmpTable td.num,#cmpTable th.num{text-align:right}
@@ -1885,8 +1890,13 @@ body.monitor-mode .nav button[data-action="monitor"]{
         <h2>Einkauf</h2>
         <p>Wocheneinkauf aus <em>Einkauf.xlsx</em>: Netto-Einkaufswert, gekaufte und gelieferte Festmeter sowie der Ø-Einkaufspreis (€/fm) je Kalenderwoche. Das im Kopf gewählte Jahr steuert die Anzeige.</p>
       </div>
-      <span class="chip" id="einkaufScope">Einkauf</span>
+      <div class="einkauf-head-controls">
+        <input id="einkaufUpload" type="file" accept=".xlsx" hidden>
+        <button class="btn" id="einkaufUploadBtn" type="button" title="Aktuelle Einkauf-Liste (Einkauf.xlsx mit Datum „Jahr/KW", Netto gekauft, fm gekauft, fm geliefert) hochladen und die Einkaufsdaten aktualisieren">Einkauf-Excel hochladen</button>
+        <span class="chip" id="einkaufScope">Einkauf</span>
+      </div>
     </div>
+    <div id="einkaufUploadStatus" class="einkauf-upload-status" hidden></div>
     <div class="kpi-grid" id="einkaufKpis"></div>
     <div class="grid-2">
       <div class="card"><h3>Ø-Einkaufspreis je KW</h3><div class="card-sub" id="einkaufPriceSub">Netto geteilt durch gekaufte Festmeter (€/fm)</div><div class="chart" id="einkaufPriceChart"></div></div>
