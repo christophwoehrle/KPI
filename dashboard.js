@@ -2757,6 +2757,14 @@ function renderWallboard(){
     saege?`Säge <b>${format(n(saege.Aktuell),"fm")}</b>`:null,
     gatter?`Gatter <b>${format(n(gatter.Aktuell),"fm")}</b>`:null
   ].filter(Boolean).join(" · ");
+  // Umsatz ↔ Einkauf: erzielter Gesamtumsatz gegen Einkaufsvolumen/-preis, daraus das Delta
+  const purch=(DATA.purchasing||[]).find(row=>Number(row.week)===week);
+  const umsatz=weeklyRevenue(weekly);
+  const einkaufWert=n(purch&&purch.netto),einkaufVol=n(purch&&purch.fmGekauft),einkaufPreis=purchasingAvgPreis(purch||{});
+  const delta=(umsatz!=null&&einkaufWert!=null)?umsatz-einkaufWert:null;
+  const cur=v=>v==null?"–":format(v,"currency");
+  const deltaStr=delta==null?"–":(delta>=0?"+ ":"− ")+format(Math.abs(delta),"currency");
+  const deltaCls=delta==null?"":(delta>=0?"wb-pos":"wb-neg");
   body.innerHTML=`
    <div class="wb-grid">
      <section class="wb-card wb-prod">
@@ -2774,6 +2782,23 @@ function renderWallboard(){
        <div class="wb-hero"><span class="wb-hero-val">${preis==null?"–":fmt0.format(preis)}</span><span class="wb-hero-unit">€/m³</span></div>
        <div class="wb-sub">Durchschnittspreis gesamt</div>
      </section>
+   </div>
+   <div class="wb-balance">
+     <div class="wb-bal-item">
+       <div class="wb-card-label">Gesamtumsatz</div>
+       <div class="wb-bal-val">${cur(umsatz)}</div>
+       <div class="wb-bal-sub">${(menge==null||preis==null)?"Menge × Ø-Preis":`${format(menge,"m3")} × ${format(preis,"price")}`}</div>
+     </div>
+     <div class="wb-bal-item">
+       <div class="wb-card-label">Einkauf</div>
+       <div class="wb-bal-val">${cur(einkaufWert)}</div>
+       <div class="wb-bal-sub">${einkaufVol==null?"kein Einkauf für diese KW erfasst":`${format(einkaufVol,"fm")} · Ø ${einkaufPreis==null?"–":format(einkaufPreis,"pricefm")}`}</div>
+     </div>
+     <div class="wb-bal-item wb-bal-delta ${deltaCls}">
+       <div class="wb-card-label">Delta · Umsatz − Einkauf</div>
+       <div class="wb-bal-val">${deltaStr}</div>
+       <div class="wb-bal-sub">Rohertrag der Woche (€)</div>
+     </div>
    </div>
    <section class="wb-trend">
      <div class="wb-trend-head">
@@ -2801,6 +2826,13 @@ function renderWallboard(){
     const to=specs[i][0],fmt=specs[i][1],from=wbPrev["h"+i];
     animateWallboardValue(el,Number.isFinite(from)?from:to,to,fmt);
     wbPrev["h"+i]=Number.isFinite(to)?to:undefined;
+  });
+  const balEls=body.querySelectorAll(".wb-bal-val");
+  const balSpecs=[[umsatz,v=>format(v,"currency")],[einkaufWert,v=>format(v,"currency")],[delta,v=>(v>=0?"+ ":"− ")+format(Math.abs(v),"currency")]];
+  balEls.forEach((el,i)=>{
+    const to=balSpecs[i][0],fmt=balSpecs[i][1],from=wbPrev["b"+i];
+    animateWallboardValue(el,Number.isFinite(from)?from:to,to,fmt);
+    wbPrev["b"+i]=Number.isFinite(to)?to:undefined;
   });
   requestAnimationFrame(()=>body.querySelectorAll(".wb-pbar").forEach(bar=>{bar.style.width=(bar.dataset.w||0)+"%";}));
   drawWallboardTrend(weeks,week);

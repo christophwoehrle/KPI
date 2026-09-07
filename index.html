@@ -156,6 +156,14 @@ main{max-width:none;margin:0 auto;padding:22px 32px 50px}
 .wb-hero-unit{font-size:clamp(20px,1.8vw,34px);color:#b9cbb2;font-weight:700}
 .wb-sub{margin-top:clamp(10px,1.3vh,20px);font-size:clamp(15px,1.25vw,24px);color:#c9d7c3}
 .wb-sub b{color:#fff;font-weight:750}
+.wb-balance{display:grid;grid-template-columns:1fr 1fr 1fr;gap:clamp(14px,1.4vw,26px)}
+.wb-bal-item{background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.10);border-radius:18px;
+  padding:clamp(12px,1.4vw,22px) clamp(16px,1.7vw,28px);display:flex;flex-direction:column;justify-content:center;min-height:0}
+.wb-bal-val{font-size:clamp(28px,3.3vw,56px);font-weight:800;color:#fff;line-height:1;margin-top:6px}
+.wb-bal-sub{margin-top:8px;font-size:clamp(13px,1.05vw,19px);color:#c9d7c3}
+.wb-bal-delta{background:linear-gradient(150deg,rgba(118,183,55,.16),rgba(118,183,55,.04));border-color:rgba(118,183,55,.34)}
+.wb-bal-item.wb-pos .wb-bal-val{color:var(--streit-green)}
+.wb-bal-item.wb-neg .wb-bal-val{color:#ef6a5f}
 .wb-trend{background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.10);border-radius:20px;
   padding:clamp(14px,1.5vw,26px);flex:1.05;min-height:0;display:flex;flex-direction:column}
 .wb-trend-head{display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap}
@@ -195,15 +203,16 @@ main{max-width:none;margin:0 auto;padding:22px 32px 50px}
 .wb-body .wb-card{animation:wbIn .5s both}
 .wb-body .wb-card:nth-child(2){animation-delay:.06s}
 .wb-body .wb-card:nth-child(3){animation-delay:.12s}
-.wb-body .wb-trend{animation:wbIn .55s .12s both}
-.wb-body .wb-products{animation:wbIn .55s .18s both}
+.wb-body .wb-balance{animation:wbIn .5s .08s both}
+.wb-body .wb-trend{animation:wbIn .55s .14s both}
+.wb-body .wb-products{animation:wbIn .55s .2s both}
 .wb-body .wb-prow{animation:wbIn .5s both}
 .wb-prod-list .wb-prow:nth-child(2){animation-delay:.04s}
 .wb-prod-list .wb-prow:nth-child(3){animation-delay:.08s}
 .wb-prod-list .wb-prow:nth-child(4){animation-delay:.12s}
 .wb-prod-list .wb-prow:nth-child(5){animation-delay:.16s}
 .wb-prod-list .wb-prow:nth-child(n+6){animation-delay:.2s}
-@media(prefers-reduced-motion:reduce){.wb-body .wb-card,.wb-body .wb-trend,.wb-body .wb-products,.wb-body .wb-prow{animation:none}.wb-pbar{transition:none}}
+@media(prefers-reduced-motion:reduce){.wb-body .wb-card,.wb-body .wb-balance,.wb-body .wb-trend,.wb-body .wb-products,.wb-body .wb-prow{animation:none}.wb-pbar{transition:none}}
 #cmpTable{width:100%;border-collapse:collapse;margin-top:6px;font-size:13px}
 #cmpTable th,#cmpTable td{padding:6px 10px;border-bottom:1px solid var(--line);text-align:left}
 #cmpTable td.num,#cmpTable th.num{text-align:right}
