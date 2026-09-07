@@ -2775,6 +2775,13 @@ function renderWallboard(){
        <div class="wb-sub">Durchschnittspreis gesamt</div>
      </section>
    </div>
+   <section class="wb-trend">
+     <div class="wb-trend-head">
+       <div class="wb-card-label">Verlauf über alle Kalenderwochen · indexiert (erste Woche = 100)</div>
+       <div class="wb-trend-legend" id="wbTrendLegend"></div>
+     </div>
+     <div class="wb-trend-chart" id="wbTrendChart"></div>
+   </section>
    <section class="wb-products">
      <div class="wb-card-label">Verkaufte Ware · Menge &amp; Preis</div>
      ${sales.length?`<div class="wb-prod-list">${sales.map(row=>{
@@ -2796,12 +2803,66 @@ function renderWallboard(){
     wbPrev["h"+i]=Number.isFinite(to)?to:undefined;
   });
   requestAnimationFrame(()=>body.querySelectorAll(".wb-pbar").forEach(bar=>{bar.style.width=(bar.dataset.w||0)+"%";}));
+  drawWallboardTrend(weeks,week);
   const wbEl=document.getElementById("wallboard");
   if(wbEl){wbEl.classList.remove("wb-flip");void wbEl.offsetWidth;wbEl.classList.add("wb-flip");setTimeout(()=>wbEl.classList.remove("wb-flip"),260);}
   strip.innerHTML=weeks.map(w=>`<button class="wb-chip ${w===week?"active":""}" data-wk="${w}" type="button">KW ${w}</button>`).join("");
   strip.querySelectorAll(".wb-chip").forEach(chip=>chip.addEventListener("click",()=>{wallboardWeek=Number(chip.dataset.wk);renderWallboard();if(wallboardAutoOn)startWallboardTimer();}));
   const active=strip.querySelector(".wb-chip.active");
   if(active&&active.scrollIntoView)active.scrollIntoView({inline:"center",block:"nearest"});
+}
+function wallboardTrendSeries(weeks){
+  const rowOf=w=>DATA.weekly.find(row=>Number(row["KW Nr."])===Number(w))||{};
+  const defs=[
+    {key:"Produktion KW gesamt (fm)",name:"Produktion",color:"#76b737"},
+    {key:"Umsatzmenge gesamt (m³)",name:"Verkaufsmenge",color:"#eef2e6"},
+    {key:"Ø Preis gesamt (€/m³)",name:"Ø Preis",color:"#e0a53a"}
+  ];
+  return defs.map(def=>{
+    const raw=weeks.map(w=>{const v=n(rowOf(w)[def.key]);return Number.isFinite(v)?v:null;});
+    const base=raw.find(v=>v!==null&&v!==0);
+    return {...def,raw,idx:raw.map(v=>(v!==null&&base)?v/base*100:null)};
+  }).filter(series=>series.idx.some(v=>v!==null));
+}
+function drawWallboardTrend(weeks,currentWeek){
+  const host=document.getElementById("wbTrendChart"),legend=document.getElementById("wbTrendLegend");
+  if(!host)return;
+  if(legend)legend.innerHTML="";
+  if(!weeks||weeks.length<2){
+    host.innerHTML='<div class="wb-empty" style="font-size:clamp(14px,1.4vw,20px)">Zu wenige Kalenderwochen für einen Verlauf.</div>';return;
+  }
+  const series=wallboardTrendSeries(weeks);
+  if(!series.length){host.innerHTML='<div class="wb-empty">Keine Verlaufsdaten.</div>';return;}
+  const W=Math.max(360,Math.round(host.clientWidth||1000)),H=Math.max(150,Math.round(host.clientHeight||220));
+  const m={l:16,r:16,t:16,b:28},pw=W-m.l-m.r,ph=H-m.t-m.b;
+  const vals=series.flatMap(s=>s.idx.filter(v=>v!==null));
+  let min=Math.min(...vals),max=Math.max(...vals);
+  if(min===max){min-=1;max+=1;}
+  const pad=(max-min)*.12;min-=pad;max+=pad;
+  const nW=weeks.length;
+  const X=i=>m.l+(nW===1?pw/2:i*pw/(nW-1));
+  const Y=v=>m.t+(max-v)*ph/(max-min);
+  const curIdx=weeks.indexOf(currentWeek);
+  const esc2=s=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;");
+  let svg=`<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" preserveAspectRatio="none" style="height:100%">`;
+  // Basislinie bei Index 100
+  if(100>=min&&100<=max){const y100=Y(100);svg+=`<line x1="${m.l}" y1="${y100}" x2="${W-m.r}" y2="${y100}" stroke="rgba(255,255,255,.16)" stroke-width="1" stroke-dasharray="5 6"/>`;}
+  // Markierung der aktuellen KW
+  if(curIdx>=0){const cx=X(curIdx);svg+=`<line x1="${cx}" y1="${m.t-4}" x2="${cx}" y2="${H-m.b+4}" stroke="rgba(255,255,255,.30)" stroke-width="2"/>`;}
+  // X-Beschriftung (ausgedünnt)
+  const step=Math.max(1,Math.ceil(nW/14));
+  weeks.forEach((w,i)=>{if(i%step!==0&&i!==nW-1)return;svg+=`<text x="${X(i)}" y="${H-8}" text-anchor="middle" fill="#8ca386" font-size="13" font-weight="600">${w}</text>`;});
+  // Linien
+  series.forEach(s=>{
+    let d="",open=false;
+    s.idx.forEach((v,i)=>{if(v===null){open=false;return;}d+=(open?" L":"M")+X(i)+" "+Y(v);open=true;});
+    svg+=`<path d="${d}" fill="none" stroke="${s.color}" stroke-width="3.2" stroke-linejoin="round" stroke-linecap="round" opacity=".95"/>`;
+  });
+  // Punkte der aktuellen KW hervorheben
+  if(curIdx>=0)series.forEach(s=>{const v=s.idx[curIdx];if(v===null)return;svg+=`<circle cx="${X(curIdx)}" cy="${Y(v)}" r="6.5" fill="${s.color}" stroke="#141b13" stroke-width="2.5"/>`;});
+  svg+=`</svg>`;
+  host.innerHTML=svg;
+  if(legend)legend.innerHTML=series.map(s=>`<span class="wb-tl"><i style="background:${s.color}"></i>${esc2(s.name)}</span>`).join("");
 }
 function initWallboard(){
   document.querySelectorAll("[data-design]").forEach(btn=>btn.addEventListener("click",()=>{
