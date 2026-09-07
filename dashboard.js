@@ -2644,9 +2644,9 @@ async function importEinkaufFile(file){
 }
 
 /* ---------- Großbild-Modus (zweiter Designstrang) ---------- */
-let wallboardWeek=null,wbWheelTs=0,wallboardAutoOn=false,wallboardAutoTimer=null;
+let wallboardWeek=null,wbWheelTs=0,wallboardAutoOn=false,wallboardAutoTimer=null,wallboardSort="price";
 const wbPrev={};
-const WALLBOARD_INTERVAL=6000,WALLBOARD_AUTO_KEY="kwDashboardWallboardAuto",DESIGN_MODE_KEY="kwDashboardDesignMode";
+const WALLBOARD_INTERVAL=6000,WALLBOARD_AUTO_KEY="kwDashboardWallboardAuto",DESIGN_MODE_KEY="kwDashboardDesignMode",WALLBOARD_SORT_KEY="kwDashboardWallboardSort";
 function wallboardIsOpen(){const wb=document.getElementById("wallboard");return wb&&!wb.hidden;}
 function syncDesignSwitch(mode){
   document.querySelectorAll("[data-design]").forEach(btn=>btn.classList.toggle("active",btn.dataset.design===mode));
@@ -2748,10 +2748,15 @@ function renderWallboard(){
   const gesamtFm=n(weekly["Produktion KW gesamt (fm)"]),gesamtM3=n(weekly["Produktion KW (m³)"]);
   const saege=startsWith("säge"),gatter=startsWith("gatter");
   const menge=n(weekly["Umsatzmenge gesamt (m³)"]),preis=n(weekly["Ø Preis gesamt (€/m³)"]);
+  const revenueOf=row=>{const mm=n(row["Menge (m³)"]),pp=n(row["EUR (€/m³)"]);return (mm!=null&&pp!=null)?mm*pp:0;};
+  const byRevenue=wallboardSort==="revenue";
   const sales=salesRowsForWeek(week)
     .filter(row=>n(row["Menge (m³)"])!==null&&!/gesamt/i.test(row.Kategorie)&&!/^davon/i.test(row.Kategorie))
-    .sort((a,b)=>(n(b["EUR (€/m³)"])||0)-(n(a["EUR (€/m³)"])||0)).slice(0,8);   // Top-Down nach erzieltem Preis
+    .sort((a,b)=>byRevenue?(revenueOf(b)-revenueOf(a)):((n(b["EUR (€/m³)"])||0)-(n(a["EUR (€/m³)"])||0)))
+    .slice(0,8);   // Top-Down nach erzieltem Preis bzw. Umsatz
   const maxMenge=Math.max(1,...sales.map(row=>n(row["Menge (m³)"])||0));
+  const maxRevenue=Math.max(1,...sales.map(revenueOf));
+  const sortLabel=byRevenue?"sortiert nach Umsatz (Menge × Preis)":"sortiert nach erzieltem Preis (€/m³)";
   const prodSub=[
     gesamtM3!=null?`<b>${format(gesamtM3,"m3")}</b>`:null,
     saege?`Säge <b>${format(n(saege.Aktuell),"fm")}</b>`:null,
@@ -2820,14 +2825,22 @@ function renderWallboard(){
      <div class="wb-trend-chart" id="wbTrendChart"></div>
    </section>
    <section class="wb-products">
-     <div class="wb-card-label">Verkaufte Ware · sortiert nach erzieltem Preis (€/m³)</div>
+     <div class="wb-products-head">
+       <div class="wb-card-label">Verkaufte Ware · ${sortLabel}</div>
+       <div class="design-switch design-switch-dark wb-sort-switch" role="group" aria-label="Top Seller sortieren nach">
+         <button type="button" class="ds-opt${byRevenue?"":" active"}" data-wbsort="price">Preis</button>
+         <button type="button" class="ds-opt${byRevenue?" active":""}" data-wbsort="revenue">Umsatz</button>
+       </div>
+     </div>
      ${sales.length?`<div class="wb-prod-list">${sales.map((row,i)=>{
-        const m=n(row["Menge (m³)"])||0,pr=n(row["EUR (€/m³)"]);
-        const width=Math.max(7,Math.round(m/maxMenge*100));
+        const m=n(row["Menge (m³)"])||0,pr=n(row["EUR (€/m³)"]),rev=revenueOf(row);
+        const metricVal=byRevenue?rev:m,metricMax=byRevenue?maxRevenue:maxMenge;
+        const width=Math.max(7,Math.round(metricVal/metricMax*100));
+        const barLabel=byRevenue?format(rev,"currency"):format(m,"m3");
         const top=i===0;
         return `<div class="wb-prow${top?" wb-prow-top":""}">
           <div class="wb-pname" title="${esc(row.Kategorie)}">${top?'<span class="wb-topbadge">★ Top Seller</span>':""}${esc(row.Kategorie)}</div>
-          <div class="wb-pbar-wrap"><div class="wb-pbar" style="width:0" data-w="${width}"><span>${format(m,"m3")}</span></div></div>
+          <div class="wb-pbar-wrap"><div class="wb-pbar" style="width:0" data-w="${width}"><span>${barLabel}</span></div></div>
           <div class="wb-pprice">${pr==null?"–":format(pr,"price")}</div>
         </div>`;
      }).join("")}</div>`:`<div class="wb-empty">Für KW ${week} liegen keine Produktdaten vor.</div>`}
@@ -2854,6 +2867,11 @@ function renderWallboard(){
   if(wbEl){wbEl.classList.remove("wb-flip");void wbEl.offsetWidth;wbEl.classList.add("wb-flip");setTimeout(()=>wbEl.classList.remove("wb-flip"),260);}
   strip.innerHTML=weeks.map(w=>`<button class="wb-chip ${w===week?"active":""}" data-wk="${w}" type="button">KW ${w}</button>`).join("");
   strip.querySelectorAll(".wb-chip").forEach(chip=>chip.addEventListener("click",()=>{wallboardWeek=Number(chip.dataset.wk);renderWallboard();if(wallboardAutoOn)startWallboardTimer();}));
+  body.querySelectorAll("[data-wbsort]").forEach(btn=>btn.addEventListener("click",()=>{
+    wallboardSort=btn.dataset.wbsort==="revenue"?"revenue":"price";
+    storageSet(WALLBOARD_SORT_KEY,wallboardSort);
+    renderWallboard();
+  }));
   const active=strip.querySelector(".wb-chip.active");
   if(active&&active.scrollIntoView)active.scrollIntoView({inline:"center",block:"nearest"});
 }
@@ -2938,6 +2956,7 @@ function initWallboard(){
     const now=Date.now();if(now-wbWheelTs<170)return;wbWheelTs=now;
     stepWallboard(event.deltaY>0?1:-1);
   },{passive:false});
+  wallboardSort=storageGet(WALLBOARD_SORT_KEY)==="revenue"?"revenue":"price";
   // Gespeichertes Design anwenden: bei „Großbild“ direkt öffnen
   const savedDesign=storageGet(DESIGN_MODE_KEY)==="wallboard"?"wallboard":"classic";
   syncDesignSwitch(savedDesign);
