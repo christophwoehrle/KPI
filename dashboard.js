@@ -2765,6 +2765,13 @@ function renderWallboard(){
   const cur=v=>v==null?"–":format(v,"currency");
   const deltaStr=delta==null?"–":(delta>=0?"+ ":"− ")+format(Math.abs(delta),"currency");
   const deltaCls=delta==null?"":(delta>=0?"wb-pos":"wb-neg");
+  // YTD: kumulierter Verkauf − Einkauf bis zur aktuellen KW (aktives Jahr)
+  const ytdUmsatz=(DATA.weekly||[]).filter(row=>Number(row["KW Nr."])<=week).reduce((sum,row)=>sum+(weeklyRevenue(row)||0),0);
+  const ytdEinkauf=(DATA.purchasing||[]).filter(row=>Number(row.week)<=week).reduce((sum,row)=>sum+(n(row.netto)||0),0);
+  const ytdHasData=(DATA.weekly||[]).some(row=>Number(row["KW Nr."])<=week)||(DATA.purchasing||[]).some(row=>Number(row.week)<=week);
+  const ytdDelta=ytdHasData?ytdUmsatz-ytdEinkauf:null;
+  const ytdStr=ytdDelta==null?"–":(ytdDelta>=0?"+ ":"− ")+format(Math.abs(ytdDelta),"currency");
+  const ytdCls=ytdDelta==null?"":(ytdDelta>=0?"wb-pos":"wb-neg");
   body.innerHTML=`
    <div class="wb-grid">
      <section class="wb-card wb-prod">
@@ -2795,9 +2802,14 @@ function renderWallboard(){
        <div class="wb-bal-sub">${einkaufVol==null?"kein Einkauf für diese KW erfasst":`${format(einkaufVol,"fm")} · Ø ${einkaufPreis==null?"–":format(einkaufPreis,"pricefm")}`}</div>
      </div>
      <div class="wb-bal-item wb-bal-delta ${deltaCls}">
-       <div class="wb-card-label">Delta · Umsatz − Einkauf</div>
+       <div class="wb-card-label">Delta · Woche</div>
        <div class="wb-bal-val">${deltaStr}</div>
-       <div class="wb-bal-sub">Rohertrag der Woche (€)</div>
+       <div class="wb-bal-sub">Umsatz − Einkauf der KW (€)</div>
+     </div>
+     <div class="wb-bal-item wb-bal-delta ${ytdCls}">
+       <div class="wb-card-label">YTD · Verkauf − Einkauf</div>
+       <div class="wb-bal-val">${ytdStr}</div>
+       <div class="wb-bal-sub">kumuliert KW1–KW${week} (€)</div>
      </div>
    </div>
    <section class="wb-trend">
@@ -2828,7 +2840,8 @@ function renderWallboard(){
     wbPrev["h"+i]=Number.isFinite(to)?to:undefined;
   });
   const balEls=body.querySelectorAll(".wb-bal-val");
-  const balSpecs=[[umsatz,v=>format(v,"currency")],[einkaufWert,v=>format(v,"currency")],[delta,v=>(v>=0?"+ ":"− ")+format(Math.abs(v),"currency")]];
+  const signCur=v=>(v>=0?"+ ":"− ")+format(Math.abs(v),"currency");
+  const balSpecs=[[umsatz,v=>format(v,"currency")],[einkaufWert,v=>format(v,"currency")],[delta,signCur],[ytdDelta,signCur]];
   balEls.forEach((el,i)=>{
     const to=balSpecs[i][0],fmt=balSpecs[i][1],from=wbPrev["b"+i];
     animateWallboardValue(el,Number.isFinite(from)?from:to,to,fmt);

@@ -156,7 +156,7 @@ main{max-width:none;margin:0 auto;padding:22px 32px 50px}
 .wb-hero-unit{font-size:clamp(20px,1.8vw,34px);color:#b9cbb2;font-weight:700}
 .wb-sub{margin-top:clamp(10px,1.3vh,20px);font-size:clamp(15px,1.25vw,24px);color:#c9d7c3}
 .wb-sub b{color:#fff;font-weight:750}
-.wb-balance{display:grid;grid-template-columns:1fr 1fr 1fr;gap:clamp(14px,1.4vw,26px)}
+.wb-balance{display:grid;grid-template-columns:repeat(4,1fr);gap:clamp(12px,1.2vw,22px)}
 .wb-bal-item{background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.10);border-radius:18px;
   padding:clamp(12px,1.4vw,22px) clamp(16px,1.7vw,28px);display:flex;flex-direction:column;justify-content:center;min-height:0}
 .wb-bal-val{font-size:clamp(28px,3.3vw,56px);font-weight:800;color:#fff;line-height:1;margin-top:6px}
@@ -188,7 +188,7 @@ main{max-width:none;margin:0 auto;padding:22px 32px 50px}
 .wb-chip:hover{background:rgba(255,255,255,.14)}
 .wb-chip.active{background:var(--streit-green);color:#12210a;border-color:var(--streit-green)}
 .wb-hint{text-align:center;color:#7f957a;font-size:13px;letter-spacing:.04em}
-@media(max-width:1000px){.wb-grid{grid-template-columns:1fr}.wb-prow{grid-template-columns:minmax(110px,1fr) 2fr auto}}
+@media(max-width:1000px){.wb-grid{grid-template-columns:1fr}.wb-balance{grid-template-columns:1fr 1fr}.wb-prow{grid-template-columns:minmax(110px,1fr) 2fr auto}}
 /* --- Dynamik: Auto-Durchlauf, Übergänge, Animationen --- */
 .wb-progress{position:absolute;left:0;top:0;right:0;height:4px;background:rgba(255,255,255,.06);overflow:hidden;border-radius:0 0 4px 4px}
 .wb-progress-bar{height:100%;width:0;background:linear-gradient(90deg,#5f9a2e,var(--streit-green));box-shadow:0 0 12px rgba(118,183,55,.6)}
