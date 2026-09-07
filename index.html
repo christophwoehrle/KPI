@@ -163,6 +163,28 @@ main{max-width:none;margin:0 auto;padding:22px 32px 50px}
 .wb-chip.active{background:var(--streit-green);color:#12210a;border-color:var(--streit-green)}
 .wb-hint{text-align:center;color:#7f957a;font-size:13px;letter-spacing:.04em}
 @media(max-width:1000px){.wb-grid{grid-template-columns:1fr}.wb-prow{grid-template-columns:minmax(110px,1fr) 2fr auto}}
+/* --- Dynamik: Auto-Durchlauf, Übergänge, Animationen --- */
+.wb-progress{position:absolute;left:0;top:0;right:0;height:4px;background:rgba(255,255,255,.06);overflow:hidden;border-radius:0 0 4px 4px}
+.wb-progress-bar{height:100%;width:0;background:linear-gradient(90deg,#5f9a2e,var(--streit-green));box-shadow:0 0 12px rgba(118,183,55,.6)}
+.wb-auto.active{background:var(--streit-green);color:#12210a;border-color:var(--streit-green)}
+.wb-live-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#12210a;margin-right:7px;vertical-align:middle}
+.wb-auto.active .wb-live-dot{animation:wbPulse 1.15s ease-in-out infinite}
+@keyframes wbPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.72)}}
+.wb-pbar{transition:width .8s cubic-bezier(.22,.61,.36,1)}
+.wb-kw-num{transition:transform .25s ease}
+.wallboard.wb-flip .wb-kw-num{transform:scale(1.12)}
+@keyframes wbIn{from{opacity:0;transform:translateY(18px) scale(.985)}to{opacity:1;transform:none}}
+.wb-body .wb-card{animation:wbIn .5s both}
+.wb-body .wb-card:nth-child(2){animation-delay:.06s}
+.wb-body .wb-card:nth-child(3){animation-delay:.12s}
+.wb-body .wb-products{animation:wbIn .55s .16s both}
+.wb-body .wb-prow{animation:wbIn .5s both}
+.wb-prod-list .wb-prow:nth-child(2){animation-delay:.04s}
+.wb-prod-list .wb-prow:nth-child(3){animation-delay:.08s}
+.wb-prod-list .wb-prow:nth-child(4){animation-delay:.12s}
+.wb-prod-list .wb-prow:nth-child(5){animation-delay:.16s}
+.wb-prod-list .wb-prow:nth-child(n+6){animation-delay:.2s}
+@media(prefers-reduced-motion:reduce){.wb-body .wb-card,.wb-body .wb-products,.wb-body .wb-prow{animation:none}.wb-pbar{transition:none}}
 #cmpTable{width:100%;border-collapse:collapse;margin-top:6px;font-size:13px}
 #cmpTable th,#cmpTable td{padding:6px 10px;border-bottom:1px solid var(--line);text-align:left}
 #cmpTable td.num,#cmpTable th.num{text-align:right}
@@ -2488,6 +2510,7 @@ body.monitor-mode .nav button[data-action="monitor"]{
 
 <!-- Zweiter Designstrang: aufgeräumte Großbild-Ansicht für Monitore -->
 <div id="wallboard" class="wallboard" hidden aria-hidden="true">
+  <div class="wb-progress" aria-hidden="true"><div class="wb-progress-bar" id="wbProgressBar"></div></div>
   <header class="wb-top">
     <div class="wb-brand"><span class="wb-blade" aria-hidden="true"></span><span class="wb-name">SÄGEWERK <strong>STREIT</strong></span></div>
     <div class="wb-kw">
@@ -2497,6 +2520,7 @@ body.monitor-mode .nav button[data-action="monitor"]{
     </div>
     <div class="wb-actions">
       <select id="wbYearSel" class="wb-year-sel" aria-label="Jahr"></select>
+      <button class="btn wb-auto" id="wbAuto" type="button" aria-pressed="false" title="Automatischer Durchlauf durch die Kalenderwochen"><span class="wb-live-dot" aria-hidden="true"></span>Auto-Durchlauf</button>
       <button class="btn" id="wbExit" type="button">Schließen</button>
     </div>
   </header>

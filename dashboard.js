@@ -2644,8 +2644,50 @@ async function importEinkaufFile(file){
 }
 
 /* ---------- Großbild-Modus (zweiter Designstrang) ---------- */
-let wallboardWeek=null,wbWheelTs=0;
+let wallboardWeek=null,wbWheelTs=0,wallboardAutoOn=false,wallboardAutoTimer=null;
+const wbPrev={};
+const WALLBOARD_INTERVAL=6000,WALLBOARD_AUTO_KEY="kwDashboardWallboardAuto";
 function wallboardIsOpen(){const wb=document.getElementById("wallboard");return wb&&!wb.hidden;}
+function animateWallboardValue(el,from,to,fmt,dur=750){
+  if(!el)return;
+  if(el.__raf)cancelAnimationFrame(el.__raf);
+  if(!Number.isFinite(to)){return;}   // „–“ aus dem Markup beibehalten
+  if(!Number.isFinite(from)||from===to){el.textContent=fmt(to);return;}
+  const start=performance.now();
+  const tick=now=>{
+    const p=Math.min(1,(now-start)/dur),e=1-Math.pow(1-p,3);
+    el.textContent=fmt(from+(to-from)*e);
+    if(p<1)el.__raf=requestAnimationFrame(tick);
+  };
+  el.__raf=requestAnimationFrame(tick);
+}
+function restartWallboardProgress(){
+  const bar=document.getElementById("wbProgressBar");if(!bar)return;
+  bar.style.transition="none";bar.style.width="0";
+  if(!wallboardAutoOn||!wallboardIsOpen())return;
+  requestAnimationFrame(()=>{bar.style.transition=`width ${WALLBOARD_INTERVAL}ms linear`;bar.style.width="100%";});
+}
+function stopWallboardTimer(){if(wallboardAutoTimer){clearInterval(wallboardAutoTimer);wallboardAutoTimer=null;}}
+function startWallboardTimer(){
+  stopWallboardTimer();
+  if(!wallboardAutoOn||!wallboardIsOpen())return;
+  restartWallboardProgress();
+  wallboardAutoTimer=setInterval(wallboardAdvance,WALLBOARD_INTERVAL);
+}
+function wallboardAdvance(){
+  const weeks=wallboardWeeks();if(!weeks.length)return;
+  const idx=weeks.indexOf(wallboardWeek);
+  wallboardWeek=weeks[idx>=weeks.length-1?0:idx+1];
+  renderWallboard();
+  restartWallboardProgress();
+}
+function setWallboardAuto(on){
+  wallboardAutoOn=!!on;
+  try{storageSet(WALLBOARD_AUTO_KEY,wallboardAutoOn?"1":"0");}catch(e){}
+  const btn=document.getElementById("wbAuto");
+  if(btn){btn.classList.toggle("active",wallboardAutoOn);btn.setAttribute("aria-pressed",wallboardAutoOn?"true":"false");}
+  if(wallboardAutoOn)startWallboardTimer();else{stopWallboardTimer();restartWallboardProgress();}
+}
 function wallboardWeeks(){return availableDashboardWeeks();}
 function populateWallboardYear(){
   const sel=document.getElementById("wbYearSel");if(!sel)return;
@@ -2661,9 +2703,11 @@ function openWallboard(){
   wb.hidden=false;wb.setAttribute("aria-hidden","false");
   document.body.style.overflow="hidden";
   renderWallboard();
+  setWallboardAuto(storageGet(WALLBOARD_AUTO_KEY)==="1");
 }
 function closeWallboard(){
   const wb=document.getElementById("wallboard");if(!wb)return;
+  stopWallboardTimer();
   wb.hidden=true;wb.setAttribute("aria-hidden","true");
   document.body.style.overflow="";
 }
@@ -2671,7 +2715,7 @@ function stepWallboard(direction){
   const weeks=wallboardWeeks();if(!weeks.length)return;
   const idx=weeks.indexOf(wallboardWeek);
   const next=Math.max(0,Math.min(weeks.length-1,(idx<0?weeks.length-1:idx)+direction));
-  if(weeks[next]!==wallboardWeek){wallboardWeek=weeks[next];renderWallboard();}
+  if(weeks[next]!==wallboardWeek){wallboardWeek=weeks[next];renderWallboard();if(wallboardAutoOn)startWallboardTimer();}
 }
 function renderWallboard(){
   const wb=document.getElementById("wallboard");
@@ -2731,13 +2775,24 @@ function renderWallboard(){
         const width=Math.max(7,Math.round(m/maxMenge*100));
         return `<div class="wb-prow">
           <div class="wb-pname" title="${esc(row.Kategorie)}">${esc(row.Kategorie)}</div>
-          <div class="wb-pbar-wrap"><div class="wb-pbar" style="width:${width}%"><span>${format(m,"m3")}</span></div></div>
+          <div class="wb-pbar-wrap"><div class="wb-pbar" style="width:0" data-w="${width}"><span>${format(m,"m3")}</span></div></div>
           <div class="wb-pprice">${pr==null?"–":format(pr,"price")}</div>
         </div>`;
      }).join("")}</div>`:`<div class="wb-empty">Für KW ${week} liegen keine Produktdaten vor.</div>`}
    </section>`;
+  // Dynamik: Zähl-Animation der großen Zahlen, wachsende Balken, KW-Puls
+  const heroEls=body.querySelectorAll(".wb-hero-val");
+  const specs=[[gesamtFm,v=>fmt0.format(v)],[menge,v=>fmtNum.format(v)],[preis,v=>fmt0.format(v)]];
+  heroEls.forEach((el,i)=>{
+    const to=specs[i][0],fmt=specs[i][1],from=wbPrev["h"+i];
+    animateWallboardValue(el,Number.isFinite(from)?from:to,to,fmt);
+    wbPrev["h"+i]=Number.isFinite(to)?to:undefined;
+  });
+  requestAnimationFrame(()=>body.querySelectorAll(".wb-pbar").forEach(bar=>{bar.style.width=(bar.dataset.w||0)+"%";}));
+  const wbEl=document.getElementById("wallboard");
+  if(wbEl){wbEl.classList.remove("wb-flip");void wbEl.offsetWidth;wbEl.classList.add("wb-flip");setTimeout(()=>wbEl.classList.remove("wb-flip"),260);}
   strip.innerHTML=weeks.map(w=>`<button class="wb-chip ${w===week?"active":""}" data-wk="${w}" type="button">KW ${w}</button>`).join("");
-  strip.querySelectorAll(".wb-chip").forEach(chip=>chip.addEventListener("click",()=>{wallboardWeek=Number(chip.dataset.wk);renderWallboard();}));
+  strip.querySelectorAll(".wb-chip").forEach(chip=>chip.addEventListener("click",()=>{wallboardWeek=Number(chip.dataset.wk);renderWallboard();if(wallboardAutoOn)startWallboardTimer();}));
   const active=strip.querySelector(".wb-chip.active");
   if(active&&active.scrollIntoView)active.scrollIntoView({inline:"center",block:"nearest"});
 }
@@ -2747,11 +2802,13 @@ function initWallboard(){
   const exit=document.getElementById("wbExit");if(exit)exit.addEventListener("click",closeWallboard);
   const prev=document.getElementById("wbPrev");if(prev)prev.addEventListener("click",()=>stepWallboard(-1));
   const next=document.getElementById("wbNext");if(next)next.addEventListener("click",()=>stepWallboard(1));
+  const auto=document.getElementById("wbAuto");if(auto)auto.addEventListener("click",()=>setWallboardAuto(!wallboardAutoOn));
   const yearSel=document.getElementById("wbYearSel");
   if(yearSel)yearSel.addEventListener("change",()=>{
     setGlobalDisplayYear(yearSel.value);
     const weeks=wallboardWeeks();wallboardWeek=weeks.length?Math.max(...weeks):null;
     renderWallboard();
+    if(wallboardAutoOn)startWallboardTimer();
   });
   document.addEventListener("keydown",event=>{
     if(!wallboardIsOpen())return;
