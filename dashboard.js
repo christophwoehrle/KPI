@@ -2646,8 +2646,11 @@ async function importEinkaufFile(file){
 /* ---------- Großbild-Modus (zweiter Designstrang) ---------- */
 let wallboardWeek=null,wbWheelTs=0,wallboardAutoOn=false,wallboardAutoTimer=null;
 const wbPrev={};
-const WALLBOARD_INTERVAL=6000,WALLBOARD_AUTO_KEY="kwDashboardWallboardAuto";
+const WALLBOARD_INTERVAL=6000,WALLBOARD_AUTO_KEY="kwDashboardWallboardAuto",DESIGN_MODE_KEY="kwDashboardDesignMode";
 function wallboardIsOpen(){const wb=document.getElementById("wallboard");return wb&&!wb.hidden;}
+function syncDesignSwitch(mode){
+  document.querySelectorAll("[data-design]").forEach(btn=>btn.classList.toggle("active",btn.dataset.design===mode));
+}
 function animateWallboardValue(el,from,to,fmt,dur=750){
   if(!el)return;
   if(el.__raf)cancelAnimationFrame(el.__raf);
@@ -2702,6 +2705,8 @@ function openWallboard(){
   populateWallboardYear();
   wb.hidden=false;wb.setAttribute("aria-hidden","false");
   document.body.style.overflow="hidden";
+  storageSet(DESIGN_MODE_KEY,"wallboard");
+  syncDesignSwitch("wallboard");
   renderWallboard();
   setWallboardAuto(storageGet(WALLBOARD_AUTO_KEY)==="1");
 }
@@ -2710,6 +2715,8 @@ function closeWallboard(){
   stopWallboardTimer();
   wb.hidden=true;wb.setAttribute("aria-hidden","true");
   document.body.style.overflow="";
+  storageSet(DESIGN_MODE_KEY,"classic");
+  syncDesignSwitch("classic");
 }
 function stepWallboard(direction){
   const weeks=wallboardWeeks();if(!weeks.length)return;
@@ -2797,8 +2804,9 @@ function renderWallboard(){
   if(active&&active.scrollIntoView)active.scrollIntoView({inline:"center",block:"nearest"});
 }
 function initWallboard(){
-  const btn=document.getElementById("wallboardBtn");
-  if(btn)btn.addEventListener("click",openWallboard);
+  document.querySelectorAll("[data-design]").forEach(btn=>btn.addEventListener("click",()=>{
+    if(btn.dataset.design==="wallboard")openWallboard();else closeWallboard();
+  }));
   const exit=document.getElementById("wbExit");if(exit)exit.addEventListener("click",closeWallboard);
   const prev=document.getElementById("wbPrev");if(prev)prev.addEventListener("click",()=>stepWallboard(-1));
   const next=document.getElementById("wbNext");if(next)next.addEventListener("click",()=>stepWallboard(1));
@@ -2823,6 +2831,10 @@ function initWallboard(){
     const now=Date.now();if(now-wbWheelTs<170)return;wbWheelTs=now;
     stepWallboard(event.deltaY>0?1:-1);
   },{passive:false});
+  // Gespeichertes Design anwenden: bei „Großbild“ direkt öffnen
+  const savedDesign=storageGet(DESIGN_MODE_KEY)==="wallboard"?"wallboard":"classic";
+  syncDesignSwitch(savedDesign);
+  if(savedDesign==="wallboard")openWallboard();
 }
 
 function kpiCardWindow(label,value,type,scopeText,delta,mode){

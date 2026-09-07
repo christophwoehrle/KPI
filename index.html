@@ -109,6 +109,16 @@ main{max-width:none;margin:0 auto;padding:22px 32px 50px}
 .einkauf-upload-status.error{background:#fdecec;border-color:#f2b6b6;color:#b02525}
 /* Header-Akzentbutton für den Großbildmodus */
 .btn.btn-accent{background:var(--streit-green);color:#12210a;font-weight:800}
+/* Design-Umschalter (klassisch ↔ Großbild) – heller Kopf */
+.design-switch{display:inline-flex;background:#fff;border:1px solid var(--line);border-radius:10px;padding:3px;gap:3px}
+.design-switch .ds-opt{border:0;background:transparent;color:var(--forest);font-weight:750;font-size:13px;padding:8px 14px;border-radius:8px;cursor:pointer;line-height:1;white-space:nowrap;transition:.12s}
+.design-switch .ds-opt:hover{background:rgba(37,42,37,.07)}
+.design-switch .ds-opt.active{background:var(--streit-green);color:#12210a;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+/* dunkle Variante im Großbildmodus */
+.design-switch.design-switch-dark{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.24)}
+.design-switch.design-switch-dark .ds-opt{color:#eef3ec}
+.design-switch.design-switch-dark .ds-opt:hover{background:rgba(255,255,255,.14)}
+.design-switch.design-switch-dark .ds-opt.active{background:var(--streit-green);color:#12210a}
 /* ---------- Großbild-Modus (zweiter Designstrang) ---------- */
 .wallboard[hidden]{display:none!important}
 .wallboard{position:fixed;inset:0;z-index:2000;display:flex;flex-direction:column;
@@ -1698,6 +1708,12 @@ body.monitor-mode .nav button[data-action="monitor"]{
         <div class="control"><label>Von</label><select id="weekFrom"></select></div>
         <div class="control"><label>Bis</label><select id="weekTo"></select></div>
         <div class="control"><label>Monitor-Raster</label><select id="monitorCols"><option value="1">1 Spalte</option><option value="2" selected>2 Spalten</option><option value="3">3 Spalten</option></select></div>
+        <div class="control"><label>Design</label>
+          <div class="design-switch" role="group" aria-label="Design umschalten" title="Zwischen klassischem Dashboard und Großbild-Design umschalten">
+            <button type="button" class="ds-opt" data-design="classic">Klassisch</button>
+            <button type="button" class="ds-opt" data-design="wallboard">Großbild</button>
+          </div>
+        </div>
         <input id="excelUpload" type="file" accept=".xlsx" multiple hidden>
         <button class="btn" id="uploadBtn" title="Allgemeinen Wochenbericht im Format KW-XX-20XX.xlsx hochladen">Wochenbericht-Excel hochladen</button>
         <button class="btn" id="sharepointBtn">Von SharePoint</button>
@@ -1706,7 +1722,6 @@ body.monitor-mode .nav button[data-action="monitor"]{
         <button class="btn" id="resetTabsBtn" title="Ursprüngliche Reihenfolge der Reiter wiederherstellen">Tabs zurücksetzen</button>
         <button class="btn info-btn" id="dataInfoBtn" title="Hinweis zur Datengrundlage"><span aria-hidden="true">i</span> Info</button>
         <button class="btn" id="fullscreenBtn">Vollbild</button>
-        <button class="btn btn-accent" id="wallboardBtn" type="button" title="Aufgeräumte Großbild-Ansicht für Monitore: Produktion, Verkauf, Menge und Preis je Kalenderwoche">Großbildmodus</button>
         <button class="btn" id="csvBtn">Auswahl als CSV</button>
         <button class="btn" id="pdfBtn" title="Aktuelle Ansicht als PDF speichern (Druckdialog → Als PDF sichern)">Als PDF</button>
         <button class="btn" id="toggleQuestionBtn" type="button" aria-pressed="true" title="Modul „Frage an das Dashboard“ ein-/ausblenden">Frage ausblenden</button>
@@ -2521,7 +2536,10 @@ body.monitor-mode .nav button[data-action="monitor"]{
     <div class="wb-actions">
       <select id="wbYearSel" class="wb-year-sel" aria-label="Jahr"></select>
       <button class="btn wb-auto" id="wbAuto" type="button" aria-pressed="false" title="Automatischer Durchlauf durch die Kalenderwochen"><span class="wb-live-dot" aria-hidden="true"></span>Auto-Durchlauf</button>
-      <button class="btn" id="wbExit" type="button">Schließen</button>
+      <div class="design-switch design-switch-dark" role="group" aria-label="Design umschalten" title="Zurück zum klassischen Dashboard">
+        <button type="button" class="ds-opt" data-design="classic">Klassisch</button>
+        <button type="button" class="ds-opt" data-design="wallboard">Großbild</button>
+      </div>
     </div>
   </header>
   <div class="wb-body" id="wbBody"></div>
