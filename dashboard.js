@@ -2750,7 +2750,7 @@ function renderWallboard(){
   const menge=n(weekly["Umsatzmenge gesamt (m³)"]),preis=n(weekly["Ø Preis gesamt (€/m³)"]);
   const sales=salesRowsForWeek(week)
     .filter(row=>n(row["Menge (m³)"])!==null&&!/gesamt/i.test(row.Kategorie)&&!/^davon/i.test(row.Kategorie))
-    .sort((a,b)=>(n(b["Menge (m³)"])||0)-(n(a["Menge (m³)"])||0)).slice(0,8);
+    .sort((a,b)=>(n(b["EUR (€/m³)"])||0)-(n(a["EUR (€/m³)"])||0)).slice(0,8);   // Top-Down nach erzieltem Preis
   const maxMenge=Math.max(1,...sales.map(row=>n(row["Menge (m³)"])||0));
   const prodSub=[
     gesamtM3!=null?`<b>${format(gesamtM3,"m3")}</b>`:null,
@@ -2820,12 +2820,13 @@ function renderWallboard(){
      <div class="wb-trend-chart" id="wbTrendChart"></div>
    </section>
    <section class="wb-products">
-     <div class="wb-card-label">Verkaufte Ware · Menge &amp; Preis</div>
-     ${sales.length?`<div class="wb-prod-list">${sales.map(row=>{
+     <div class="wb-card-label">Verkaufte Ware · sortiert nach erzieltem Preis (€/m³)</div>
+     ${sales.length?`<div class="wb-prod-list">${sales.map((row,i)=>{
         const m=n(row["Menge (m³)"])||0,pr=n(row["EUR (€/m³)"]);
         const width=Math.max(7,Math.round(m/maxMenge*100));
-        return `<div class="wb-prow">
-          <div class="wb-pname" title="${esc(row.Kategorie)}">${esc(row.Kategorie)}</div>
+        const top=i===0;
+        return `<div class="wb-prow${top?" wb-prow-top":""}">
+          <div class="wb-pname" title="${esc(row.Kategorie)}">${top?'<span class="wb-topbadge">★ Top Seller</span>':""}${esc(row.Kategorie)}</div>
           <div class="wb-pbar-wrap"><div class="wb-pbar" style="width:0" data-w="${width}"><span>${format(m,"m3")}</span></div></div>
           <div class="wb-pprice">${pr==null?"–":format(pr,"price")}</div>
         </div>`;
