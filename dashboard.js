@@ -1902,6 +1902,7 @@ function initControls(){
   rebuildSawlineSelectors();
   initStatisticsBoard(weeks);
   initComparison();
+  initWallboard();
   const einkaufUploadBtn=document.getElementById("einkaufUploadBtn"),einkaufUpload=document.getElementById("einkaufUpload");
   if(einkaufUploadBtn&&einkaufUpload){
     einkaufUploadBtn.addEventListener("click",()=>einkaufUpload.click());
@@ -2640,6 +2641,131 @@ async function importEinkaufFile(file){
   }
   const input=document.getElementById("einkaufUpload");
   if(input)input.value="";
+}
+
+/* ---------- Großbild-Modus (zweiter Designstrang) ---------- */
+let wallboardWeek=null,wbWheelTs=0;
+function wallboardIsOpen(){const wb=document.getElementById("wallboard");return wb&&!wb.hidden;}
+function wallboardWeeks(){return availableDashboardWeeks();}
+function populateWallboardYear(){
+  const sel=document.getElementById("wbYearSel");if(!sel)return;
+  const years=weeklyYears().length?weeklyYears():dashboardYears();
+  sel.innerHTML=years.map(y=>`<option value="${y}">${y}</option>`).join("");
+  sel.value=String(activeDashboardYear());
+}
+function openWallboard(){
+  const wb=document.getElementById("wallboard");if(!wb)return;
+  const weeks=wallboardWeeks();
+  wallboardWeek=weeks.length?Math.max(...weeks):null;
+  populateWallboardYear();
+  wb.hidden=false;wb.setAttribute("aria-hidden","false");
+  document.body.style.overflow="hidden";
+  renderWallboard();
+}
+function closeWallboard(){
+  const wb=document.getElementById("wallboard");if(!wb)return;
+  wb.hidden=true;wb.setAttribute("aria-hidden","true");
+  document.body.style.overflow="";
+}
+function stepWallboard(direction){
+  const weeks=wallboardWeeks();if(!weeks.length)return;
+  const idx=weeks.indexOf(wallboardWeek);
+  const next=Math.max(0,Math.min(weeks.length-1,(idx<0?weeks.length-1:idx)+direction));
+  if(weeks[next]!==wallboardWeek){wallboardWeek=weeks[next];renderWallboard();}
+}
+function renderWallboard(){
+  const wb=document.getElementById("wallboard");
+  if(!wb||wb.hidden)return;
+  const body=document.getElementById("wbBody"),strip=document.getElementById("wbStrip");
+  const year=activeDashboardYear();
+  document.getElementById("wbYear").textContent=String(year);
+  const weeks=wallboardWeeks();
+  if(!weeks.length){
+    document.getElementById("wbKw").textContent="KW –";
+    document.getElementById("wbPrev").disabled=true;document.getElementById("wbNext").disabled=true;
+    body.innerHTML='<div class="wb-empty">Noch keine Wochenberichte geladen.<br>Bitte im normalen Dashboard oben rechts Wochenbericht-Excel (KW-XX-20XX.xlsx) hochladen.</div>';
+    strip.innerHTML="";return;
+  }
+  if(!weeks.includes(wallboardWeek))wallboardWeek=Math.max(...weeks);
+  const week=wallboardWeek;
+  document.getElementById("wbKw").textContent="KW "+week;
+  document.getElementById("wbPrev").disabled=weeks.indexOf(week)<=0;
+  document.getElementById("wbNext").disabled=weeks.indexOf(week)>=weeks.length-1;
+  const weekly=DATA.weekly.find(row=>row["KW Nr."]===week)||{};
+  const prod=productionRowsForWeek(week);
+  const startsWith=name=>prod.find(row=>String(row.Kennzahl||"").toLowerCase().startsWith(name));
+  const gesamtFm=n(weekly["Produktion KW gesamt (fm)"]),gesamtM3=n(weekly["Produktion KW (m³)"]);
+  const saege=startsWith("säge"),gatter=startsWith("gatter");
+  const menge=n(weekly["Umsatzmenge gesamt (m³)"]),preis=n(weekly["Ø Preis gesamt (€/m³)"]);
+  const sales=salesRowsForWeek(week)
+    .filter(row=>n(row["Menge (m³)"])!==null&&!/gesamt/i.test(row.Kategorie)&&!/^davon/i.test(row.Kategorie))
+    .sort((a,b)=>(n(b["Menge (m³)"])||0)-(n(a["Menge (m³)"])||0)).slice(0,8);
+  const maxMenge=Math.max(1,...sales.map(row=>n(row["Menge (m³)"])||0));
+  const prodSub=[
+    gesamtM3!=null?`<b>${format(gesamtM3,"m3")}</b>`:null,
+    saege?`Säge <b>${format(n(saege.Aktuell),"fm")}</b>`:null,
+    gatter?`Gatter <b>${format(n(gatter.Aktuell),"fm")}</b>`:null
+  ].filter(Boolean).join(" · ");
+  body.innerHTML=`
+   <div class="wb-grid">
+     <section class="wb-card wb-prod">
+       <div class="wb-card-label">Produktion</div>
+       <div class="wb-hero"><span class="wb-hero-val">${gesamtFm==null?"–":fmt0.format(gesamtFm)}</span><span class="wb-hero-unit">fm</span></div>
+       <div class="wb-sub">${prodSub||"keine Produktionsdetails für diese Woche"}</div>
+     </section>
+     <section class="wb-card">
+       <div class="wb-card-label">Verkauf · Menge</div>
+       <div class="wb-hero"><span class="wb-hero-val">${menge==null?"–":fmtNum.format(menge)}</span><span class="wb-hero-unit">m³</span></div>
+       <div class="wb-sub">fakturierte Umsatzmenge</div>
+     </section>
+     <section class="wb-card">
+       <div class="wb-card-label">Verkauf · Ø Preis</div>
+       <div class="wb-hero"><span class="wb-hero-val">${preis==null?"–":fmt0.format(preis)}</span><span class="wb-hero-unit">€/m³</span></div>
+       <div class="wb-sub">Durchschnittspreis gesamt</div>
+     </section>
+   </div>
+   <section class="wb-products">
+     <div class="wb-card-label">Verkaufte Ware · Menge &amp; Preis</div>
+     ${sales.length?`<div class="wb-prod-list">${sales.map(row=>{
+        const m=n(row["Menge (m³)"])||0,pr=n(row["EUR (€/m³)"]);
+        const width=Math.max(7,Math.round(m/maxMenge*100));
+        return `<div class="wb-prow">
+          <div class="wb-pname" title="${esc(row.Kategorie)}">${esc(row.Kategorie)}</div>
+          <div class="wb-pbar-wrap"><div class="wb-pbar" style="width:${width}%"><span>${format(m,"m3")}</span></div></div>
+          <div class="wb-pprice">${pr==null?"–":format(pr,"price")}</div>
+        </div>`;
+     }).join("")}</div>`:`<div class="wb-empty">Für KW ${week} liegen keine Produktdaten vor.</div>`}
+   </section>`;
+  strip.innerHTML=weeks.map(w=>`<button class="wb-chip ${w===week?"active":""}" data-wk="${w}" type="button">KW ${w}</button>`).join("");
+  strip.querySelectorAll(".wb-chip").forEach(chip=>chip.addEventListener("click",()=>{wallboardWeek=Number(chip.dataset.wk);renderWallboard();}));
+  const active=strip.querySelector(".wb-chip.active");
+  if(active&&active.scrollIntoView)active.scrollIntoView({inline:"center",block:"nearest"});
+}
+function initWallboard(){
+  const btn=document.getElementById("wallboardBtn");
+  if(btn)btn.addEventListener("click",openWallboard);
+  const exit=document.getElementById("wbExit");if(exit)exit.addEventListener("click",closeWallboard);
+  const prev=document.getElementById("wbPrev");if(prev)prev.addEventListener("click",()=>stepWallboard(-1));
+  const next=document.getElementById("wbNext");if(next)next.addEventListener("click",()=>stepWallboard(1));
+  const yearSel=document.getElementById("wbYearSel");
+  if(yearSel)yearSel.addEventListener("change",()=>{
+    setGlobalDisplayYear(yearSel.value);
+    const weeks=wallboardWeeks();wallboardWeek=weeks.length?Math.max(...weeks):null;
+    renderWallboard();
+  });
+  document.addEventListener("keydown",event=>{
+    if(!wallboardIsOpen())return;
+    if(event.key==="Escape")closeWallboard();
+    else if(event.key==="ArrowLeft"){event.preventDefault();stepWallboard(-1);}
+    else if(event.key==="ArrowRight"){event.preventDefault();stepWallboard(1);}
+  });
+  const wb=document.getElementById("wallboard");
+  if(wb)wb.addEventListener("wheel",event=>{
+    if(!wallboardIsOpen())return;
+    event.preventDefault();
+    const now=Date.now();if(now-wbWheelTs<170)return;wbWheelTs=now;
+    stepWallboard(event.deltaY>0?1:-1);
+  },{passive:false});
 }
 
 function kpiCardWindow(label,value,type,scopeText,delta,mode){
@@ -5755,7 +5881,7 @@ function updateAll(){
   renderCountryPoints();
   if(typeof renderAssistantStatic==="function"&&document.getElementById("assistantExamples"))renderAssistantStatic();
   renderSales();renderEinkauf();renderProduction();renderSawline();renderKpis();renderOverviewCharts();renderTrends();renderAnnual();renderStatisticsBoard();renderQuality();
-  renderLand();renderCountryComparison();renderWorldMap();renderDetails();renderHistory();renderInfrastructure();renderComparison();
+  renderLand();renderCountryComparison();renderWorldMap();renderDetails();renderHistory();renderInfrastructure();renderComparison();renderWallboard();
   renderKpiWorkspace();
   applyClosableStandardWindows();
   const hint=document.getElementById("emptyDataHint");

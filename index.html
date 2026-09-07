@@ -107,6 +107,62 @@ main{max-width:none;margin:0 auto;padding:22px 32px 50px}
 .einkauf-upload-status.working{background:#fff7e6;border-color:#f2d493;color:#8a5a00}
 .einkauf-upload-status.success{background:#eef7ea;border-color:#bfe3ac;color:#237a34}
 .einkauf-upload-status.error{background:#fdecec;border-color:#f2b6b6;color:#b02525}
+/* Header-Akzentbutton für den Großbildmodus */
+.btn.btn-accent{background:var(--streit-green);color:#12210a;font-weight:800}
+/* ---------- Großbild-Modus (zweiter Designstrang) ---------- */
+.wallboard[hidden]{display:none!important}
+.wallboard{position:fixed;inset:0;z-index:2000;display:flex;flex-direction:column;
+  background:radial-gradient(1200px 700px at 78% -10%,#2c3a29 0%,#1b241a 55%,#141b13 100%);
+  color:#eef3ec;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  padding:clamp(16px,2.2vw,40px);gap:clamp(14px,1.8vh,26px);overflow:hidden}
+.wb-top{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap}
+.wb-brand{display:flex;align-items:center;gap:14px;letter-spacing:.12em;font-size:clamp(15px,1.5vw,22px)}
+.wb-brand .wb-name strong{color:var(--streit-green)}
+.wb-blade{width:26px;height:26px;border-radius:50%;background:
+  conic-gradient(from 0deg,var(--streit-green) 0 12%,transparent 12% 25%,var(--streit-green) 25% 37%,transparent 37% 50%,var(--streit-green) 50% 62%,transparent 62% 75%,var(--streit-green) 75% 87%,transparent 87% 100%);
+  box-shadow:inset 0 0 0 5px #141b13}
+.wb-kw{display:flex;align-items:center;gap:clamp(14px,1.6vw,30px)}
+.wb-kw-main{display:flex;flex-direction:column;align-items:center;line-height:1}
+.wb-kw-num{font-size:clamp(34px,4.4vw,74px);font-weight:800;letter-spacing:.01em}
+.wb-kw-year{font-size:clamp(13px,1.1vw,18px);color:#9fb69a;margin-top:6px;letter-spacing:.18em}
+.wb-step{width:clamp(48px,3.4vw,66px);height:clamp(48px,3.4vw,66px);border-radius:50%;border:2px solid rgba(255,255,255,.22);
+  background:rgba(255,255,255,.06);color:#eef3ec;font-size:clamp(24px,2vw,34px);cursor:pointer;line-height:1;display:grid;place-items:center;transition:.12s}
+.wb-step:hover{background:var(--streit-green);color:#12210a;border-color:var(--streit-green)}
+.wb-step:disabled{opacity:.28;cursor:default;background:rgba(255,255,255,.04)}
+.wb-actions{display:flex;align-items:center;gap:12px}
+.wb-year-sel{border:1px solid rgba(255,255,255,.28);background:rgba(255,255,255,.08);color:#fff;border-radius:9px;padding:9px 12px;font-size:16px}
+.wb-year-sel option{color:#111}
+.wallboard .btn{background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.25);font-size:15px}
+.wallboard .btn:hover{background:rgba(255,255,255,.2)}
+.wb-body{flex:1;min-height:0;display:flex;flex-direction:column;gap:clamp(14px,1.8vh,26px)}
+.wb-grid{display:grid;grid-template-columns:1.25fr 1fr 1fr;gap:clamp(14px,1.4vw,26px)}
+.wb-card{background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.10);border-radius:20px;
+  padding:clamp(18px,1.9vw,34px);display:flex;flex-direction:column;justify-content:center;min-height:0}
+.wb-card.wb-prod{background:linear-gradient(150deg,rgba(118,183,55,.20),rgba(118,183,55,.05));border-color:rgba(118,183,55,.35)}
+.wb-card-label{font-size:clamp(13px,1vw,18px);letter-spacing:.16em;color:#9fb69a;font-weight:700;text-transform:uppercase;margin-bottom:clamp(8px,1vh,16px)}
+.wb-hero{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.wb-hero-val{font-size:clamp(46px,6.2vw,120px);font-weight:800;line-height:.95;color:#fff}
+.wb-prod .wb-hero-val{color:var(--streit-green)}
+.wb-hero-unit{font-size:clamp(20px,1.8vw,34px);color:#b9cbb2;font-weight:700}
+.wb-sub{margin-top:clamp(10px,1.3vh,20px);font-size:clamp(15px,1.25vw,24px);color:#c9d7c3}
+.wb-sub b{color:#fff;font-weight:750}
+.wb-products{background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.10);border-radius:20px;
+  padding:clamp(16px,1.7vw,30px);flex:1;min-height:0;display:flex;flex-direction:column}
+.wb-prod-list{margin-top:clamp(8px,1vh,16px);display:flex;flex-direction:column;gap:clamp(8px,1.1vh,16px);overflow:auto}
+.wb-prow{display:grid;grid-template-columns:minmax(140px,1.1fr) 3fr minmax(120px,auto);align-items:center;gap:clamp(12px,1.4vw,26px)}
+.wb-pname{font-size:clamp(15px,1.35vw,26px);font-weight:700;color:#eef3ec;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wb-pbar-wrap{position:relative;height:clamp(20px,2.2vh,34px);background:rgba(255,255,255,.06);border-radius:8px;overflow:hidden}
+.wb-pbar{position:absolute;inset:0 auto 0 0;background:linear-gradient(90deg,#5f9a2e,var(--streit-green));border-radius:8px;display:flex;align-items:center;padding-left:12px}
+.wb-pbar span{font-size:clamp(13px,1.05vw,20px);font-weight:800;color:#12210a;white-space:nowrap}
+.wb-pprice{text-align:right;font-size:clamp(18px,1.7vw,34px);font-weight:800;color:#fff;white-space:nowrap}
+.wb-empty{flex:1;display:grid;place-items:center;text-align:center;color:#9fb69a;font-size:clamp(18px,2vw,30px);padding:40px}
+.wb-strip{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+.wb-chip{flex:none;padding:7px 13px;border-radius:999px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.05);
+  color:#c9d7c3;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap}
+.wb-chip:hover{background:rgba(255,255,255,.14)}
+.wb-chip.active{background:var(--streit-green);color:#12210a;border-color:var(--streit-green)}
+.wb-hint{text-align:center;color:#7f957a;font-size:13px;letter-spacing:.04em}
+@media(max-width:1000px){.wb-grid{grid-template-columns:1fr}.wb-prow{grid-template-columns:minmax(110px,1fr) 2fr auto}}
 #cmpTable{width:100%;border-collapse:collapse;margin-top:6px;font-size:13px}
 #cmpTable th,#cmpTable td{padding:6px 10px;border-bottom:1px solid var(--line);text-align:left}
 #cmpTable td.num,#cmpTable th.num{text-align:right}
@@ -1628,6 +1684,7 @@ body.monitor-mode .nav button[data-action="monitor"]{
         <button class="btn" id="resetTabsBtn" title="Ursprüngliche Reihenfolge der Reiter wiederherstellen">Tabs zurücksetzen</button>
         <button class="btn info-btn" id="dataInfoBtn" title="Hinweis zur Datengrundlage"><span aria-hidden="true">i</span> Info</button>
         <button class="btn" id="fullscreenBtn">Vollbild</button>
+        <button class="btn btn-accent" id="wallboardBtn" type="button" title="Aufgeräumte Großbild-Ansicht für Monitore: Produktion, Verkauf, Menge und Preis je Kalenderwoche">Großbildmodus</button>
         <button class="btn" id="csvBtn">Auswahl als CSV</button>
         <button class="btn" id="pdfBtn" title="Aktuelle Ansicht als PDF speichern (Druckdialog → Als PDF sichern)">Als PDF</button>
         <button class="btn" id="toggleQuestionBtn" type="button" aria-pressed="true" title="Modul „Frage an das Dashboard“ ein-/ausblenden">Frage ausblenden</button>
@@ -2428,6 +2485,25 @@ body.monitor-mode .nav button[data-action="monitor"]{
 <div class="tab-order-toast" id="tabOrderToast" aria-live="polite"></div>
 <div class="week-scroll-hint" id="weekScrollHint" aria-live="polite"></div>
 <div class="tooltip" id="tooltip"></div>
+
+<!-- Zweiter Designstrang: aufgeräumte Großbild-Ansicht für Monitore -->
+<div id="wallboard" class="wallboard" hidden aria-hidden="true">
+  <header class="wb-top">
+    <div class="wb-brand"><span class="wb-blade" aria-hidden="true"></span><span class="wb-name">SÄGEWERK <strong>STREIT</strong></span></div>
+    <div class="wb-kw">
+      <button class="wb-step" id="wbPrev" type="button" aria-label="Vorherige Kalenderwoche">‹</button>
+      <div class="wb-kw-main"><span class="wb-kw-num" id="wbKw">KW –</span><span class="wb-kw-year" id="wbYear">–</span></div>
+      <button class="wb-step" id="wbNext" type="button" aria-label="Nächste Kalenderwoche">›</button>
+    </div>
+    <div class="wb-actions">
+      <select id="wbYearSel" class="wb-year-sel" aria-label="Jahr"></select>
+      <button class="btn" id="wbExit" type="button">Schließen</button>
+    </div>
+  </header>
+  <div class="wb-body" id="wbBody"></div>
+  <div class="wb-strip" id="wbStrip" aria-hidden="true"></div>
+  <div class="wb-hint">‹ › · Pfeiltasten ← → · Mausrad zum Blättern · Esc schließt</div>
+</div>
 
 <script src="dashboard-geo.js"></script>
 <script src="dashboard-sales.js"></script>
