@@ -2878,9 +2878,9 @@ function renderWallboard(){
 function wallboardTrendSeries(weeks){
   const rowOf=w=>DATA.weekly.find(row=>Number(row["KW Nr."])===Number(w))||{};
   const defs=[
-    {key:"Produktion KW gesamt (fm)",name:"Produktion",color:"#76b737"},
-    {key:"Umsatzmenge gesamt (m³)",name:"Verkaufsmenge",color:"#eef2e6"},
-    {key:"Ø Preis gesamt (€/m³)",name:"Ø Preis",color:"#e0a53a"}
+    {key:"Produktion KW gesamt (fm)",name:"Produktion",color:"#4e7d24"},
+    {key:"Umsatzmenge gesamt (m³)",name:"Verkaufsmenge",color:"#2b3a55"},
+    {key:"Ø Preis gesamt (€/m³)",name:"Ø Preis",color:"#a4601a"}
   ];
   return defs.map(def=>{
     const raw=weeks.map(w=>{const v=n(rowOf(w)[def.key]);return Number.isFinite(v)?v:null;});
@@ -2910,12 +2910,12 @@ function drawWallboardTrend(weeks,currentWeek){
   const esc2=s=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;");
   let svg=`<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" preserveAspectRatio="none" style="height:100%">`;
   // Basislinie bei Index 100
-  if(100>=min&&100<=max){const y100=Y(100);svg+=`<line x1="${m.l}" y1="${y100}" x2="${W-m.r}" y2="${y100}" stroke="rgba(255,255,255,.16)" stroke-width="1" stroke-dasharray="5 6"/>`;}
+  if(100>=min&&100<=max){const y100=Y(100);svg+=`<line x1="${m.l}" y1="${y100}" x2="${W-m.r}" y2="${y100}" stroke="rgba(60,52,28,.24)" stroke-width="1" stroke-dasharray="5 6"/>`;}
   // Markierung der aktuellen KW
-  if(curIdx>=0){const cx=X(curIdx);svg+=`<line x1="${cx}" y1="${m.t-4}" x2="${cx}" y2="${H-m.b+4}" stroke="rgba(255,255,255,.30)" stroke-width="2"/>`;}
+  if(curIdx>=0){const cx=X(curIdx);svg+=`<line x1="${cx}" y1="${m.t-4}" x2="${cx}" y2="${H-m.b+4}" stroke="rgba(60,52,28,.36)" stroke-width="2"/>`;}
   // X-Beschriftung (ausgedünnt)
   const step=Math.max(1,Math.ceil(nW/14));
-  weeks.forEach((w,i)=>{if(i%step!==0&&i!==nW-1)return;svg+=`<text x="${X(i)}" y="${H-8}" text-anchor="middle" fill="#8ca386" font-size="13" font-weight="600">${w}</text>`;});
+  weeks.forEach((w,i)=>{if(i%step!==0&&i!==nW-1)return;svg+=`<text x="${X(i)}" y="${H-8}" text-anchor="middle" fill="#6f6647" font-size="13" font-weight="600">${w}</text>`;});
   // Linien
   series.forEach(s=>{
     let d="",open=false;
@@ -2923,7 +2923,7 @@ function drawWallboardTrend(weeks,currentWeek){
     svg+=`<path d="${d}" fill="none" stroke="${s.color}" stroke-width="3.2" stroke-linejoin="round" stroke-linecap="round" opacity=".95"/>`;
   });
   // Punkte der aktuellen KW hervorheben
-  if(curIdx>=0)series.forEach(s=>{const v=s.idx[curIdx];if(v===null)return;svg+=`<circle cx="${X(curIdx)}" cy="${Y(v)}" r="6.5" fill="${s.color}" stroke="#141b13" stroke-width="2.5"/>`;});
+  if(curIdx>=0)series.forEach(s=>{const v=s.idx[curIdx];if(v===null)return;svg+=`<circle cx="${X(curIdx)}" cy="${Y(v)}" r="6.5" fill="${s.color}" stroke="#f2ecd6" stroke-width="2.5"/>`;});
   svg+=`</svg>`;
   host.innerHTML=svg;
   if(legend)legend.innerHTML=series.map(s=>`<span class="wb-tl"><i style="background:${s.color}"></i>${esc2(s.name)}</span>`).join("");
