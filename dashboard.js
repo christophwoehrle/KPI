@@ -2825,7 +2825,7 @@ function renderWallboard(){
    </div>
    <section class="wb-trend">
      <div class="wb-trend-head">
-       <div class="wb-card-label">Verlauf über alle Kalenderwochen · indexiert (erste Woche = 100)</div>
+       <div class="wb-card-label">Verlauf · letzte 15 Wochen · indexiert (erste Woche = 100)</div>
        <div class="wb-trend-legend" id="wbTrendLegend"></div>
      </div>
      <div class="wb-trend-chart" id="wbTrendChart"></div>
@@ -2885,7 +2885,9 @@ function wallboardTrendSeries(weeks){
   const rowOf=w=>DATA.weekly.find(row=>Number(row["KW Nr."])===Number(w))||{};
   const defs=[
     {key:"Produktion KW gesamt (fm)",name:"Produktion",color:"#4e7d24"},
+    {key:"Auftragseingang gesamt (m³)",name:"Auftragseingang",color:"#1f7a6b"},
     {key:"Umsatzmenge gesamt (m³)",name:"Verkaufsmenge",color:"#2b3a55"},
+    {key:"Verladungen gesamt",name:"Abgefahrene Ladungen",color:"#9c3587"},
     {key:"Ø Preis gesamt (€/m³)",name:"Ø Preis",color:"#a4601a"}
   ];
   return defs.map(def=>{
@@ -2898,10 +2900,11 @@ function drawWallboardTrend(weeks,currentWeek){
   const host=document.getElementById("wbTrendChart"),legend=document.getElementById("wbTrendLegend");
   if(!host)return;
   if(legend)legend.innerHTML="";
-  if(!weeks||weeks.length<2){
+  const wk=(weeks||[]).slice(-15);   // nur die letzten 15 Wochen
+  if(wk.length<2){
     host.innerHTML='<div class="wb-empty" style="font-size:clamp(14px,1.4vw,20px)">Zu wenige Kalenderwochen für einen Verlauf.</div>';return;
   }
-  const series=wallboardTrendSeries(weeks);
+  const series=wallboardTrendSeries(wk);
   if(!series.length){host.innerHTML='<div class="wb-empty">Keine Verlaufsdaten.</div>';return;}
   const W=Math.max(360,Math.round(host.clientWidth||1000)),H=Math.max(150,Math.round(host.clientHeight||220));
   const m={l:16,r:16,t:16,b:28},pw=W-m.l-m.r,ph=H-m.t-m.b;
@@ -2909,10 +2912,10 @@ function drawWallboardTrend(weeks,currentWeek){
   let min=Math.min(...vals),max=Math.max(...vals);
   if(min===max){min-=1;max+=1;}
   const pad=(max-min)*.12;min-=pad;max+=pad;
-  const nW=weeks.length;
+  const nW=wk.length;
   const X=i=>m.l+(nW===1?pw/2:i*pw/(nW-1));
   const Y=v=>m.t+(max-v)*ph/(max-min);
-  const curIdx=weeks.indexOf(currentWeek);
+  const curIdx=wk.indexOf(currentWeek);
   const esc2=s=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;");
   let svg=`<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" preserveAspectRatio="none" style="height:100%">`;
   // Basislinie bei Index 100
@@ -2921,7 +2924,7 @@ function drawWallboardTrend(weeks,currentWeek){
   if(curIdx>=0){const cx=X(curIdx);svg+=`<line x1="${cx}" y1="${m.t-4}" x2="${cx}" y2="${H-m.b+4}" stroke="rgba(60,52,28,.36)" stroke-width="2"/>`;}
   // X-Beschriftung (ausgedünnt)
   const step=Math.max(1,Math.ceil(nW/14));
-  weeks.forEach((w,i)=>{if(i%step!==0&&i!==nW-1)return;svg+=`<text x="${X(i)}" y="${H-8}" text-anchor="middle" fill="#6f6647" font-size="13" font-weight="600">${w}</text>`;});
+  wk.forEach((w,i)=>{if(i%step!==0&&i!==nW-1)return;svg+=`<text x="${X(i)}" y="${H-8}" text-anchor="middle" fill="#6f6647" font-size="13" font-weight="600">${w}</text>`;});
   // Linien
   series.forEach(s=>{
     let d="",open=false;
