@@ -145,7 +145,7 @@ main{max-width:none;margin:0 auto;padding:22px 32px 50px}
 .wallboard .btn{background:rgba(255,255,255,.45);color:#2c2a1e;border:1px solid rgba(74,66,38,.28);font-size:15px}
 .wallboard .btn:hover{background:rgba(255,255,255,.72)}
 .wb-body{flex:1;min-height:0;display:flex;flex-direction:column;gap:clamp(10px,1.3vh,18px)}
-.wb-grid{display:grid;grid-template-columns:1.25fr 1fr 1fr;gap:clamp(14px,1.4vw,26px)}
+.wb-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:clamp(12px,1.2vw,22px)}
 .wb-card{background:rgba(255,255,255,.34);border:1px solid rgba(74,66,38,.18);border-radius:20px;
   padding:clamp(10px,1.2vw,20px) clamp(18px,1.9vw,34px);display:flex;flex-direction:column;justify-content:center;min-height:0}
 .wb-card.wb-prod{background:linear-gradient(150deg,rgba(118,183,55,.40),rgba(118,183,55,.12));border-color:rgba(90,140,40,.50)}
@@ -200,7 +200,7 @@ main{max-width:none;margin:0 auto;padding:22px 32px 50px}
 .wallboard .design-switch .ds-opt{color:#2c2a1e}
 .wallboard .design-switch .ds-opt:hover{background:rgba(74,66,38,.08)}
 .wallboard .design-switch .ds-opt.active{background:var(--streit-green);color:#12210a}
-@media(max-width:1000px){.wb-grid{grid-template-columns:1fr}.wb-balance{grid-template-columns:1fr 1fr}.wb-prow{grid-template-columns:minmax(110px,1fr) 2fr auto}}
+@media(max-width:1000px){.wb-grid{grid-template-columns:1fr 1fr}.wb-balance{grid-template-columns:1fr 1fr}.wb-prow{grid-template-columns:minmax(110px,1fr) 2fr auto}}
 /* --- Dynamik: Auto-Durchlauf, Übergänge, Animationen --- */
 .wb-progress{position:absolute;left:0;top:0;right:0;height:4px;background:rgba(74,66,38,.16);overflow:hidden;border-radius:0 0 4px 4px}
 .wb-progress-bar{height:100%;width:0;background:linear-gradient(90deg,#5f9a2e,var(--streit-green));box-shadow:0 0 12px rgba(118,183,55,.6)}
@@ -213,8 +213,9 @@ main{max-width:none;margin:0 auto;padding:22px 32px 50px}
 .wallboard.wb-flip .wb-kw-num{transform:scale(1.12)}
 @keyframes wbIn{from{opacity:0;transform:translateY(18px) scale(.985)}to{opacity:1;transform:none}}
 .wb-body .wb-card{animation:wbIn .5s both}
-.wb-body .wb-card:nth-child(2){animation-delay:.06s}
-.wb-body .wb-card:nth-child(3){animation-delay:.12s}
+.wb-body .wb-card:nth-child(2){animation-delay:.05s}
+.wb-body .wb-card:nth-child(3){animation-delay:.10s}
+.wb-body .wb-card:nth-child(4){animation-delay:.15s}
 .wb-body .wb-balance{animation:wbIn .5s .08s both}
 .wb-body .wb-trend{animation:wbIn .55s .14s both}
 .wb-body .wb-products{animation:wbIn .55s .2s both}

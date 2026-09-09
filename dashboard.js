@@ -2748,6 +2748,7 @@ function renderWallboard(){
   const gesamtFm=n(weekly["Produktion KW gesamt (fm)"]),gesamtM3=n(weekly["Produktion KW (m³)"]);
   const saege=startsWith("säge"),gatter=startsWith("gatter");
   const menge=n(weekly["Umsatzmenge gesamt (m³)"]),preis=n(weekly["Ø Preis gesamt (€/m³)"]);
+  const auftrag=n(weekly["Auftragseingang gesamt (m³)"]);
   const revenueOf=row=>{const mm=n(row["Menge (m³)"]),pp=n(row["EUR (€/m³)"]);return (mm!=null&&pp!=null)?mm*pp:0;};
   const byRevenue=wallboardSort==="revenue";
   const sales=salesRowsForWeek(week)
@@ -2783,6 +2784,11 @@ function renderWallboard(){
        <div class="wb-card-label">Produktion</div>
        <div class="wb-hero"><span class="wb-hero-val">${gesamtFm==null?"–":fmt0.format(gesamtFm)}</span><span class="wb-hero-unit">fm</span></div>
        <div class="wb-sub">${prodSub||"keine Produktionsdetails für diese Woche"}</div>
+     </section>
+     <section class="wb-card">
+       <div class="wb-card-label">Auftragseingang</div>
+       <div class="wb-hero"><span class="wb-hero-val">${auftrag==null?"–":fmtNum.format(auftrag)}</span><span class="wb-hero-unit">m³</span></div>
+       <div class="wb-sub">Auftragseingang gesamt</div>
      </section>
      <section class="wb-card">
        <div class="wb-card-label">Verkauf · Menge</div>
@@ -2847,7 +2853,7 @@ function renderWallboard(){
    </section>`;
   // Dynamik: Zähl-Animation der großen Zahlen, wachsende Balken, KW-Puls
   const heroEls=body.querySelectorAll(".wb-hero-val");
-  const specs=[[gesamtFm,v=>fmt0.format(v)],[menge,v=>fmtNum.format(v)],[preis,v=>fmt0.format(v)]];
+  const specs=[[gesamtFm,v=>fmt0.format(v)],[auftrag,v=>fmtNum.format(v)],[menge,v=>fmtNum.format(v)],[preis,v=>fmt0.format(v)]];
   heroEls.forEach((el,i)=>{
     const to=specs[i][0],fmt=specs[i][1],from=wbPrev["h"+i];
     animateWallboardValue(el,Number.isFinite(from)?from:to,to,fmt);
