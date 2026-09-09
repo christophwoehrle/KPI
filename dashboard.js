@@ -2825,7 +2825,7 @@ function renderWallboard(){
    </div>
    <section class="wb-trend">
      <div class="wb-trend-head">
-       <div class="wb-card-label">Verlauf · letzte 15 Wochen · indexiert (erste Woche = 100)</div>
+       <div class="wb-card-label">Verlauf · letzte 15 Wochen · je Kennzahl auf Min–Max skaliert</div>
        <div class="wb-trend-legend" id="wbTrendLegend"></div>
      </div>
      <div class="wb-trend-chart" id="wbTrendChart"></div>
@@ -2906,36 +2906,38 @@ function drawWallboardTrend(weeks,currentWeek){
   }
   const series=wallboardTrendSeries(wk);
   if(!series.length){host.innerHTML='<div class="wb-empty">Keine Verlaufsdaten.</div>';return;}
-  const W=Math.max(360,Math.round(host.clientWidth||1000)),H=Math.max(150,Math.round(host.clientHeight||220));
-  const m={l:16,r:16,t:16,b:28},pw=W-m.l-m.r,ph=H-m.t-m.b;
-  const vals=series.flatMap(s=>s.idx.filter(v=>v!==null));
-  let min=Math.min(...vals),max=Math.max(...vals);
-  if(min===max){min-=1;max+=1;}
-  const pad=(max-min)*.12;min-=pad;max+=pad;
-  const nW=wk.length;
-  const X=i=>m.l+(nW===1?pw/2:i*pw/(nW-1));
-  const Y=v=>m.t+(max-v)*ph/(max-min);
+  const W=Math.max(360,Math.round(host.clientWidth||1000)),H=Math.max(120,Math.round(host.clientHeight||150));
+  const m={l:14,r:14,t:12,b:24},pw=W-m.l-m.r,ph=H-m.t-m.b;
+  const nW=wk.length,nS=series.length;
+  // Je Kennzahl auf eigenes Min–Max skalieren, damit Veränderungen deutlich sichtbar werden
+  series.forEach(s=>{const vv=s.raw.filter(v=>v!==null&&Number.isFinite(v));s.min=vv.length?Math.min(...vv):0;s.max=vv.length?Math.max(...vv):1;});
+  const band=pw/nW,groupW=band*0.82,barW=groupW/nS;
+  const gx=i=>m.l+i*band+(band-groupW)/2;
+  const baseY=H-m.b;
   const curIdx=wk.indexOf(currentWeek);
   const esc2=s=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;");
   let svg=`<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" preserveAspectRatio="none" style="height:100%">`;
-  // Basislinie bei Index 100
-  if(100>=min&&100<=max){const y100=Y(100);svg+=`<line x1="${m.l}" y1="${y100}" x2="${W-m.r}" y2="${y100}" stroke="rgba(60,52,28,.24)" stroke-width="1" stroke-dasharray="5 6"/>`;}
-  // Markierung der aktuellen KW
-  if(curIdx>=0){const cx=X(curIdx);svg+=`<line x1="${cx}" y1="${m.t-4}" x2="${cx}" y2="${H-m.b+4}" stroke="rgba(60,52,28,.36)" stroke-width="2"/>`;}
-  // X-Beschriftung (ausgedünnt)
-  const step=Math.max(1,Math.ceil(nW/14));
-  wk.forEach((w,i)=>{if(i%step!==0&&i!==nW-1)return;svg+=`<text x="${X(i)}" y="${H-8}" text-anchor="middle" fill="#6f6647" font-size="13" font-weight="600">${w}</text>`;});
-  // Linien
-  series.forEach(s=>{
-    let d="",open=false;
-    s.idx.forEach((v,i)=>{if(v===null){open=false;return;}d+=(open?" L":"M")+X(i)+" "+Y(v);open=true;});
-    svg+=`<path d="${d}" fill="none" stroke="${s.color}" stroke-width="3.2" stroke-linejoin="round" stroke-linecap="round" opacity=".95"/>`;
+  // Highlight der aktuellen KW
+  if(curIdx>=0)svg+=`<rect x="${m.l+curIdx*band}" y="${m.t-2}" width="${band}" height="${ph+2}" fill="rgba(60,52,28,.08)" rx="4"/>`;
+  // Grundlinie
+  svg+=`<line x1="${m.l}" y1="${baseY}" x2="${W-m.r}" y2="${baseY}" stroke="rgba(60,52,28,.30)" stroke-width="1"/>`;
+  // Gruppierte Balken je Woche
+  wk.forEach((w,i)=>{
+    series.forEach((s,si)=>{
+      const v=s.raw[i];if(v===null||!Number.isFinite(v))return;
+      const range=s.max-s.min;
+      const frac=0.06+(range>0?(v-s.min)/range:1)*0.94;   // Mindesthöhe + Skalierung
+      const h=Math.max(2,frac*ph);
+      const x=gx(i)+si*barW;
+      svg+=`<rect x="${x+0.7}" y="${baseY-h}" width="${Math.max(1.6,barW-1.4)}" height="${h}" fill="${s.color}" rx="2" opacity="${curIdx===i?1:.88}"/>`;
+    });
   });
-  // Punkte der aktuellen KW hervorheben
-  if(curIdx>=0)series.forEach(s=>{const v=s.idx[curIdx];if(v===null)return;svg+=`<circle cx="${X(curIdx)}" cy="${Y(v)}" r="6.5" fill="${s.color}" stroke="#f2ecd6" stroke-width="2.5"/>`;});
+  // X-Beschriftung (ausgedünnt)
+  const step=Math.max(1,Math.ceil(nW/15));
+  wk.forEach((w,i)=>{if(i%step!==0&&i!==nW-1)return;svg+=`<text x="${m.l+i*band+band/2}" y="${H-7}" text-anchor="middle" fill="#6f6647" font-size="12" font-weight="600">${w}</text>`;});
   svg+=`</svg>`;
   host.innerHTML=svg;
-  if(legend)legend.innerHTML=series.map(s=>`<span class="wb-tl"><i style="background:${s.color}"></i>${esc2(s.name)}</span>`).join("");
+  if(legend)legend.innerHTML=series.map(s=>`<span class="wb-tl"><i style="background:${s.color};width:12px;height:12px;border-radius:3px"></i>${esc2(s.name)}</span>`).join("");
 }
 function initWallboard(){
   document.querySelectorAll("[data-design]").forEach(btn=>btn.addEventListener("click",()=>{
