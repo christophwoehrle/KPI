@@ -2896,11 +2896,11 @@ function renderWallboard(){
 function wallboardTrendSeries(weeks){
   const rowOf=w=>DATA.weekly.find(row=>Number(row["KW Nr."])===Number(w))||{};
   const defs=[
-    {key:"Produktion KW gesamt (fm)",name:"Produktion",color:"#4e7d24"},
-    {key:"Auftragseingang gesamt (m³)",name:"Auftragseingang",color:"#1f7a6b"},
-    {key:"Umsatzmenge gesamt (m³)",name:"Verkaufsmenge",color:"#2b3a55"},
-    {key:"Verladungen gesamt",name:"Abgefahrene Ladungen",color:"#9c3587"},
-    {key:"Ø Preis gesamt (€/m³)",name:"Ø Preis",color:"#a4601a"}
+    {key:"Produktion KW gesamt (fm)",name:"Produktion",color:"#4e7d24",type:"fm"},
+    {key:"Auftragseingang gesamt (m³)",name:"Auftragseingang",color:"#1f7a6b",type:"m3"},
+    {key:"Umsatzmenge gesamt (m³)",name:"Verkaufsmenge",color:"#2b3a55",type:"m3"},
+    {key:"Verladungen gesamt",name:"Abgefahrene Ladungen",color:"#9c3587",type:"number"},
+    {key:"Ø Preis gesamt (€/m³)",name:"Ø Preis",color:"#a4601a",type:"price"}
   ];
   return defs.map(def=>{
     const raw=weeks.map(w=>{const v=n(rowOf(w)[def.key]);return Number.isFinite(v)?v:null;});
@@ -2945,9 +2945,34 @@ function drawWallboardTrend(weeks,currentWeek){
   });
   // Punkte je Woche (aktuelle KW größer)
   series.forEach(s=>s.idx.forEach((v,i)=>{if(v===null)return;const r=i===curIdx?6.5:3.4;svg+=`<circle cx="${X(i)}" cy="${Y(v)}" r="${r}" fill="${s.color}" stroke="#f2ecd6" stroke-width="${i===curIdx?2.5:1.5}"/>`;}));
+  // Unsichtbare Hover-Flächen je Woche für Tooltips
+  const half=nW>1?pw/(nW-1)/2:pw/2;
+  wk.forEach((w,i)=>{
+    const rx=Math.max(m.l,X(i)-half),rw=Math.min(W-m.r,X(i)+half)-rx;
+    svg+=`<rect class="wb-hit" x="${rx}" y="${m.t}" width="${Math.max(1,rw)}" height="${ph}" fill="transparent" data-wi="${i}"/>`;
+  });
   svg+=`</svg>`;
   host.innerHTML=svg;
   if(legend)legend.innerHTML=series.map(s=>`<span class="wb-tl"><i style="background:${s.color}"></i>${esc2(s.name)}</span>`).join("");
+  // Tooltip-Verhalten
+  const tip=document.getElementById("wbTip");
+  if(tip){
+    tip.style.display="none";
+    const showTipAt=(i,ev)=>{
+      const rows=series.map(s=>`<span class="wb-tip-row"><i style="background:${s.color}"></i>${esc2(s.name)}<b>${s.raw[i]==null?"–":format(s.raw[i],s.type)}</b></span>`).join("");
+      tip.innerHTML=`<div class="wb-tip-h">KW ${wk[i]}</div>${rows}`;
+      tip.style.display="block";
+      const tw=tip.offsetWidth||240,x=ev.clientX+16,left=(x+tw>window.innerWidth-8)?ev.clientX-tw-16:x;
+      tip.style.left=Math.max(8,left)+"px";
+      tip.style.top=Math.min(window.innerHeight-tip.offsetHeight-8,ev.clientY+16)+"px";
+    };
+    host.querySelectorAll(".wb-hit").forEach(rect=>{
+      const i=Number(rect.dataset.wi);
+      rect.addEventListener("mousemove",ev=>showTipAt(i,ev));
+      rect.addEventListener("mouseenter",ev=>showTipAt(i,ev));
+      rect.addEventListener("mouseleave",()=>{tip.style.display="none";});
+    });
+  }
 }
 function initWallboard(){
   document.querySelectorAll("[data-design]").forEach(btn=>btn.addEventListener("click",()=>{

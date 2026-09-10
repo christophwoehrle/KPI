@@ -176,6 +176,13 @@ main{max-width:none;margin:0 auto;padding:22px 32px 50px}
 .wb-tl i{width:16px;height:5px;border-radius:3px;display:inline-block}
 .wb-trend-chart{flex:1;min-height:0;margin-top:clamp(6px,1vh,14px)}
 .wb-trend-chart svg{display:block}
+.wb-hit{cursor:crosshair}
+.wb-tip{position:fixed;z-index:2100;pointer-events:none;display:none;background:#2c2a1e;color:#f2ecd6;
+  padding:10px 13px;border-radius:10px;box-shadow:0 10px 26px rgba(0,0,0,.30);font-size:14px;max-width:300px;border:1px solid rgba(255,255,255,.14)}
+.wb-tip-h{font-weight:800;font-size:15px;margin-bottom:6px;color:#fff;letter-spacing:.02em}
+.wb-tip-row{display:flex;align-items:center;gap:8px;line-height:1.75;white-space:nowrap}
+.wb-tip-row i{width:11px;height:11px;border-radius:3px;flex:none}
+.wb-tip-row b{margin-left:auto;font-weight:800;padding-left:16px}
 .wb-products{background:rgba(255,255,255,.34);border:1px solid rgba(74,66,38,.18);border-radius:20px;
   padding:clamp(16px,1.7vw,30px);flex:1;min-height:0;display:flex;flex-direction:column}
 .wb-products-head{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
@@ -2578,6 +2585,7 @@ body.monitor-mode .nav button[data-action="monitor"]{
     </div>
   </header>
   <div class="wb-body" id="wbBody"></div>
+  <div class="wb-tip" id="wbTip" aria-hidden="true"></div>
   <div class="wb-strip" id="wbStrip" aria-hidden="true"></div>
   <div class="wb-hint">‹ › · Pfeiltasten ← → · Mausrad zum Blättern · Esc schließt</div>
 </div>
