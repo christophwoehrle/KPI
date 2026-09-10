@@ -2749,6 +2749,18 @@ function renderWallboard(){
   const saege=startsWith("säge"),gatter=startsWith("gatter");
   const menge=n(weekly["Umsatzmenge gesamt (m³)"]),preis=n(weekly["Ø Preis gesamt (€/m³)"]);
   const auftrag=n(weekly["Auftragseingang gesamt (m³)"]);
+  // Delta Auftragseingang: aktuelle KW gegenüber der vorherigen KW
+  const prevWeek=(DATA.weekly||[]).map(row=>Number(row["KW Nr."])).filter(w=>w<week).sort((a,b)=>b-a)[0];
+  const prevAuftrag=(prevWeek!=null)?n(((DATA.weekly||[]).find(row=>Number(row["KW Nr."])===prevWeek)||{})["Auftragseingang gesamt (m³)"]):null;
+  const auftragDelta=(auftrag!=null&&prevAuftrag!=null)?auftrag-prevAuftrag:null;
+  const auftragDeltaPct=(auftragDelta!=null&&prevAuftrag)?auftragDelta/Math.abs(prevAuftrag):null;
+  let auftragSub="Auftragseingang gesamt";
+  if(auftragDelta!=null){
+    const cls=auftragDelta>0?"wb-chg-up":(auftragDelta<0?"wb-chg-down":"wb-chg-flat");
+    const arrow=auftragDelta>0?"▲":(auftragDelta<0?"▼":"→");
+    const pctTxt=auftragDeltaPct!=null?` · ${auftragDeltaPct>0?"+":""}${format(auftragDeltaPct,"percent")}`:"";
+    auftragSub=`<span class="wb-chg ${cls}">${arrow} ${auftragDelta>0?"+":""}${format(auftragDelta,"m3")}${pctTxt}</span> zur KW${prevWeek}`;
+  }
   const revenueOf=row=>{const mm=n(row["Menge (m³)"]),pp=n(row["EUR (€/m³)"]);return (mm!=null&&pp!=null)?mm*pp:0;};
   const byRevenue=wallboardSort==="revenue";
   const sales=salesRowsForWeek(week)
@@ -2788,7 +2800,7 @@ function renderWallboard(){
      <section class="wb-card">
        <div class="wb-card-label">Auftragseingang</div>
        <div class="wb-hero"><span class="wb-hero-val">${auftrag==null?"–":fmtNum.format(auftrag)}</span><span class="wb-hero-unit">m³</span></div>
-       <div class="wb-sub">Auftragseingang gesamt</div>
+       <div class="wb-sub">${auftragSub}</div>
      </section>
      <section class="wb-card">
        <div class="wb-card-label">Verkauf · Menge</div>
