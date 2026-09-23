@@ -2513,7 +2513,12 @@ function renderEinkauf(){
     return;
   }
   const purchaseWeeks=allRows.map(row=>Number(row.week));
-  const weeks=dashboardWindowWeeks(null,purchaseWeeks);   // an der aktuellsten Einkaufs-KW verankert
+  // Anker = letzte KW mit tatsächlichem Einkauf (Netto oder fm gekauft > 0). So verankert die
+  // Standardansicht ("aktuellste KW") nicht auf einer reinen Liefer-Restwoche, in der nur fm
+  // geliefert erfasst ist und Einkaufswert/fm gekauft noch 0 sind.
+  const purchasedWeeks=allRows.filter(row=>(n(row.netto)>0)||(n(row.fmGekauft)>0)).map(row=>Number(row.week));
+  const anchorWeek=purchasedWeeks.length?Math.max(...purchasedWeeks):null;
+  const weeks=dashboardWindowWeeks(anchorWeek,purchaseWeeks);   // an der aktuellsten Einkaufs-KW verankert
   const windowed=weeks.length>1;
   const set=new Set(weeks.map(Number));
   const rows=allRows.filter(row=>set.has(Number(row.week)));
