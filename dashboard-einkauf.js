@@ -1,5 +1,5 @@
-/* Einkaufsdaten (Einkauf.xlsx) je Kalenderwoche 2025 und 2026 – Datum (Jahr/KW),
-   Netto gekauft (EUR), fm gekauft, fm geliefert. Fest hinterlegter Stammdatensatz,
+/* Einkaufsdaten (gekaufte vs. gelieferte Menge, 01.01.2025 – 31.08.2026) je Kalenderwoche 2025 und 2026 –
+   Datum (Jahr/KW), Netto gekauft (EUR), fm gekauft, fm geliefert. Fest hinterlegter Stammdatensatz,
    unabhaengig von den hochgeladenen Wochenberichten. Ø Einkaufspreis = Netto / fm gekauft. */
 const PURCHASING_HISTORY=[{year:2025,week:1,netto:0,fmGekauft:0,fmGeliefert:0},
 {year:2025,week:2,netto:95083.66,fmGekauft:948.852,fmGeliefert:0},
@@ -83,4 +83,10 @@ const PURCHASING_HISTORY=[{year:2025,week:1,netto:0,fmGekauft:0,fmGeliefert:0},
 {year:2026,week:28,netto:299793.13,fmGekauft:2330.536,fmGeliefert:7135.34},
 {year:2026,week:29,netto:665425.26,fmGekauft:5286.305,fmGeliefert:7412.449},
 {year:2026,week:30,netto:573376.42,fmGekauft:4542.053,fmGeliefert:6893.667},
-{year:2026,week:31,netto:1953311.36,fmGekauft:15373.231,fmGeliefert:6773.872}];
+{year:2026,week:31,netto:1991040.47,fmGekauft:15694.675,fmGeliefert:6773.872},
+{year:2026,week:32,netto:413731.74,fmGekauft:3285.542,fmGeliefert:6546.515},
+{year:2026,week:33,netto:617200.49,fmGekauft:5013.095,fmGeliefert:3776.845},
+{year:2026,week:34,netto:62721.81,fmGekauft:624.99,fmGeliefert:52.089},
+{year:2026,week:35,netto:175446.19,fmGekauft:1396.58,fmGeliefert:6488.993},
+{year:2026,week:36,netto:1065866.91,fmGekauft:8747.571,fmGeliefert:5653.932},
+{year:2026,week:37,netto:0,fmGekauft:0,fmGeliefert:4806.733}];
