@@ -1755,6 +1755,18 @@ body.monitor-mode .nav button[data-action="monitor"]{
 .perf-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:7px;vertical-align:middle;flex:none}
 .perf-quad-label{font-size:10px;fill:#9aa693;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
 @media(max-width:1100px){.perf-split{grid-template-columns:1fr}.perf-scatter{min-height:300px}}
+/* Verladungen-Heatmap */
+.perf-heat-legend{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:11px;font-weight:700}
+.perf-heat-legend .ramp{display:flex;height:12px;border-radius:3px;overflow:hidden;border:1px solid var(--line)}
+.perf-heat-legend .ramp i{width:20px;height:100%}
+.perf-heatmap{min-width:520px}
+.perf-heatmap th{background:var(--forest);color:#fff;text-align:center;white-space:nowrap;font-size:11px;padding:7px 9px}
+.perf-heatmap th:first-child{text-align:left;position:sticky;left:0;z-index:3}
+.perf-heatmap td{text-align:center;font-variant-numeric:tabular-nums;font-weight:800;font-size:13px;padding:8px 9px;border:1px solid #fff;color:#2a2e29}
+.perf-heatmap td:first-child{text-align:left;position:sticky;left:0;background:#f4f7f1;font-weight:800;color:var(--forest);z-index:2;white-space:nowrap}
+.perf-heatmap tr:last-child td{font-weight:850}
+.perf-heatmap tr:last-child td:not(:first-child){background:#eef3ea;color:var(--forest);border-top:2px solid var(--streit-green)}
+.perf-heatmap .heat-col-sum{background:#eef3ea!important;color:var(--forest)!important;border-left:2px solid var(--streit-green)}
 
 </style>
 </head>
@@ -1977,6 +1989,17 @@ body.monitor-mode .nav button[data-action="monitor"]{
         <div class="card perf-chart-card"><div class="perf-scatter" id="perfCountryScatter"></div></div>
         <div class="card perf-matrix-card"><div class="table-wrap"><table id="perfCountryTable"></table></div></div>
       </div>
+    </div>
+
+    <div class="perf-block">
+      <div class="perf-block-head">
+        <div>
+          <h3>Verladungen · Heatmap</h3>
+          <div class="card-sub" id="perfShipSub">Anzahl Verladungen je Wochentag und Kalenderwoche – dunkler = mehr Verladungen.</div>
+        </div>
+        <div class="perf-heat-legend" id="perfShipLegend"></div>
+      </div>
+      <div class="card"><div class="table-wrap"><table id="perfShipHeatmap" class="heatmap perf-heatmap"></table></div></div>
     </div>
   </section>
 

@@ -6256,6 +6256,48 @@ function perfScatter(id,points,opt={}){
 function perfShortName(name){
   return String(name).replace(/^davon\s+/i,"").replace("sonstige Weiterverarbeitung","sonst. WV").replace("Hauptware Säge","Hauptware").replace("NE Sägewerk","NE Säge");
 }
+/* Sequentielle Grün-Skala für die Verladungs-Heatmap (hell → Streit-Grün). */
+function perfHeatColor(t){
+  t=Math.max(0,Math.min(1,t));
+  const a=[238,243,234],b=[47,75,21];   // #eef3ea → dunkles Waldgrün
+  const c=a.map((v,i)=>Math.round(v+(b[i]-v)*t));
+  return {bg:`rgb(${c[0]},${c[1]},${c[2]})`,fg:t>0.55?"#f2ecd6":"#2a2e29"};
+}
+/* Heatmap der Verladungen: Wochentage (Mo–Fr) × Kalenderwochen des Fensters. */
+function renderPerformanceHeatmap(weeks){
+  const host=document.getElementById("perfShipHeatmap");if(!host)return;
+  const legend=document.getElementById("perfShipLegend"),sub=document.getElementById("perfShipSub");
+  const days=["Mo","Di","Mi","Do","Fr"];
+  const set=new Set((weeks||[]).map(Number));
+  const rows=(DATA.shipments||[]).filter(r=>set.has(weekNo(r.KW))).sort((a,b)=>weekNo(a.KW)-weekNo(b.KW));
+  if(!rows.length){
+    host.innerHTML='<tbody><tr><td style="padding:16px;color:#6e756b">Keine Verladungsdaten für den gewählten Zeitraum.</td></tr></tbody>';
+    if(legend)legend.innerHTML="";
+    if(sub)sub.textContent="Anzahl Verladungen je Wochentag und Kalenderwoche – dunkler = mehr Verladungen.";
+    return;
+  }
+  let max=1;
+  rows.forEach(r=>days.forEach(k=>{const v=n(r[k]);if(v!==null&&v>max)max=v;}));
+  const head=`<thead><tr><th>Wochentag</th>${rows.map(r=>`<th>KW${weekNo(r.KW)}</th>`).join("")}<th class="heat-col-sum">Σ</th></tr></thead>`;
+  let body="<tbody>";
+  days.forEach(k=>{
+    let rowSum=0,anyVal=false;
+    const cells=rows.map(r=>{
+      const v=n(r[k]);
+      if(v===null)return '<td style="background:#f7f9f5;color:#b7c2ab">·</td>';
+      anyVal=true;rowSum+=v;
+      const col=perfHeatColor(Math.sqrt(v/max));
+      return `<td style="background:${col.bg};color:${col.fg}" title="KW${weekNo(r.KW)} · ${k}: ${fmt0.format(v)} Verladungen">${fmt0.format(v)}</td>`;
+    }).join("");
+    body+=`<tr><td>${k}</td>${cells}<td class="heat-col-sum">${anyVal?fmt0.format(rowSum):"–"}</td></tr>`;
+  });
+  const colTotals=rows.map(r=>{const v=n(r["Gesamt gemeldet"]);return v!==null?v:n(r["Summe Tage"]);});
+  const grand=colTotals.reduce((s,v)=>s+(v||0),0);
+  body+=`<tr><td>Gesamt</td>${colTotals.map(v=>`<td>${v==null?"–":fmt0.format(v)}</td>`).join("")}<td class="heat-col-sum">${fmt0.format(grand)}</td></tr></tbody>`;
+  host.innerHTML=head+body;
+  if(legend)legend.innerHTML=`<span>0</span><span class="ramp">${[0.08,0.3,0.55,0.8,1].map(t=>`<i style="background:${perfHeatColor(t).bg}"></i>`).join("")}</span><span>${fmt0.format(max)}</span>`;
+  if(sub)sub.textContent=`${windowScopeText(weeks)} · Anzahl Verladungen je Wochentag (Mo–Fr) und KW · dunkler = mehr`;
+}
 function renderPerformance(){
   if(!document.getElementById("perfKpis"))return;
   const year=activeDashboardYear();
@@ -6270,6 +6312,7 @@ function renderPerformance(){
     perfKpis.innerHTML='<div class="notice">Für den gewählten Zeitraum liegen keine Umsatz- bzw. Länderdaten vor. Bitte Wochenberichte laden.</div>';
     perfScatter("perfProductScatter",[]);perfScatter("perfCountryScatter",[]);
     renderTable("perfProductTable",[],[["Produkt","text"]]);renderTable("perfCountryTable",[],[["Land","text"]]);
+    renderPerformanceHeatmap([]);
     return;
   }
   const prevTag=prev.length?`ggü. ${windowScopeText(prev)}`:"keine Vorperiode";
@@ -6342,6 +6385,9 @@ function renderPerformance(){
   })),{xLabel:"Mengenanteil (%)",yLabel:"Ø Preis Gesamt (€/m³)",xTick:v=>fmt0.format(v)+" %",yTick:v=>fmt0.format(v)});
   const countrySub=document.getElementById("perfCountrySub");
   if(countrySub)countrySub.textContent=`${scope} · Blasengröße = Mengenanteil · rechts oben = großer Markt zu hohem Preis · Δ ${prevTag}`;
+
+  // ---------- Verladungen-Heatmap ----------
+  renderPerformanceHeatmap(weeks);
 
   // ---------- Auto-Insights ----------
   const topRev=prod[0];
