@@ -1710,6 +1710,41 @@ body.monitor-mode .nav button[data-action="monitor"]{
 .cp-table td:not(:first-child){text-align:right;font-variant-numeric:tabular-nums;font-weight:700}
 .cp-empty{padding:22px 10px;text-align:center;color:var(--muted);border:2px dashed #bcc9b5;background:#f3f6f0}
 
+/* ---------- Performance-Seite ---------- */
+.perf-insights{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin:2px 0 16px}
+.perf-insight{position:relative;background:var(--paper);border:1px solid #d7ddd2;border-left:5px solid var(--streit-green);
+  border-radius:var(--radius);padding:12px 14px;box-shadow:var(--shadow);min-width:0}
+.perf-insight.good{border-left-color:#5e982d}
+.perf-insight.warn{border-left-color:#c79127}
+.perf-insight.bad{border-left-color:#a73b2f}
+.perf-insight small{display:block;color:var(--moss);font-size:10px;text-transform:uppercase;letter-spacing:.07em;font-weight:800}
+.perf-insight strong{display:block;color:var(--forest);font-size:19px;font-weight:850;line-height:1.15;margin-top:5px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.perf-insight span{display:block;color:var(--muted);font-size:12px;margin-top:4px}
+.perf-block{margin-bottom:20px}
+.perf-block-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin:0 0 10px;
+  border-left:6px solid var(--streit-green);padding-left:13px}
+.perf-block-head h3{margin:0;color:var(--forest);font-size:17px;text-transform:uppercase;letter-spacing:.03em}
+.perf-block-head .card-sub{margin:3px 0 0}
+.perf-split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:16px;align-items:stretch}
+.perf-chart-card,.perf-matrix-card{min-width:0;display:flex;flex-direction:column}
+.perf-scatter{flex:1;min-height:330px;position:relative}
+.perf-scatter svg{width:100%;height:100%;display:block}
+.perf-scatter .empty{display:grid;height:100%;min-height:300px;place-items:center;color:var(--muted)}
+.perf-matrix-card .table-wrap{border:0;flex:1}
+#perfProductTable,#perfCountryTable{min-width:0}
+#perfProductTable td:first-child,#perfCountryTable td:first-child{font-weight:800;color:var(--forest)}
+#perfProductTable .num,#perfCountryTable .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.perf-bar-cell{min-width:120px}
+.perf-minibar{position:relative;height:17px;background:#eef3ea;border-radius:4px;overflow:hidden}
+.perf-minibar i{position:absolute;inset:0 auto 0 0;background:linear-gradient(90deg,#5f9a2e,var(--streit-green));border-radius:4px}
+.perf-minibar b{position:absolute;right:6px;top:0;line-height:17px;font-size:10px;font-weight:800;color:var(--forest)}
+.perf-delta{font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.perf-delta.up{color:#5b922e}.perf-delta.down{color:#a64436}.perf-delta.flat{color:var(--muted)}
+.perf-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:7px;vertical-align:middle;flex:none}
+.perf-quad-label{font-size:10px;fill:#9aa693;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+@media(max-width:1100px){.perf-split{grid-template-columns:1fr}.perf-scatter{min-height:300px}}
+
 </style>
 </head>
 <body>
@@ -1770,7 +1805,8 @@ body.monitor-mode .nav button[data-action="monitor"]{
       </div>
     </div>
     <nav class="nav" id="nav">
-      <button class="active" data-view="countryPoints">Länderdaten</button>
+      <button class="active" data-view="performance">Performance</button>
+      <button data-view="countryPoints">Länderdaten</button>
       <button data-view="assistant">Fragen & Analyse</button>
       <button data-view="history">Historie</button>
       <button data-view="sales">Umsatz</button>
@@ -1895,7 +1931,45 @@ body.monitor-mode .nav button[data-action="monitor"]{
     <strong>Noch keine Daten geladen.</strong>
     Bitte lade oben rechts Wochenberichte (<code>KW-XX-20XX.xlsx</code>) und/oder Sägelinien-Protokolle (<code>Sh_XX_YY.xlsx</code>) hoch. Es werden ausschließlich die hochgeladenen Dateien angezeigt.
   </div>
-  <section class="view active" id="countryPoints">
+  <section class="view active" id="performance">
+    <div class="section-head">
+      <div>
+        <h2>Performance</h2>
+        <p>Zusammenhänge statt Rohdaten: welche <strong>Länder</strong> und <strong>Produkte</strong> zu welchen <strong>Preisen</strong> und <strong>Mengen</strong> wie performen – mit Momentum gegenüber der Vorperiode. Zeitraum &amp; Jahr steuern alle Kennzahlen über den Kopf.</p>
+      </div>
+      <span class="chip" id="perfScope">Performance</span>
+    </div>
+    <div id="perfInsights" class="perf-insights"></div>
+    <div class="kpi-grid" id="perfKpis"></div>
+
+    <div class="perf-block">
+      <div class="perf-block-head">
+        <div>
+          <h3>Produkt-Performance</h3>
+          <div class="card-sub" id="perfProductSub">Blasengröße = Umsatz (Menge × Preis). Rechts oben = hoher Preis bei hoher Menge.</div>
+        </div>
+      </div>
+      <div class="perf-split">
+        <div class="card perf-chart-card"><div class="perf-scatter" id="perfProductScatter"></div></div>
+        <div class="card perf-matrix-card"><div class="table-wrap"><table id="perfProductTable"></table></div></div>
+      </div>
+    </div>
+
+    <div class="perf-block">
+      <div class="perf-block-head">
+        <div>
+          <h3>Länder-Performance</h3>
+          <div class="card-sub" id="perfCountrySub">Blasengröße = Mengenanteil. Rechts oben = großer Markt zu hohem Preis.</div>
+        </div>
+      </div>
+      <div class="perf-split">
+        <div class="card perf-chart-card"><div class="perf-scatter" id="perfCountryScatter"></div></div>
+        <div class="card perf-matrix-card"><div class="table-wrap"><table id="perfCountryTable"></table></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="view" id="countryPoints">
     <div class="section-head">
       <div>
         <h2>Länderdaten – Punktauswahl</h2>

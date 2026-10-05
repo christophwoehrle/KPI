@@ -975,8 +975,8 @@ async function importExcelFiles(fileList,options={}){
 }
 
 
-const TAB_ORDER_STORAGE_KEY="kwDashboardTabOrderV5";
-const DEFAULT_TAB_ORDER=["countryPoints","assistant","history","sales","einkauf","production","sawline","overview","trends","annual","statistics","quality","infrastructure","land","countryCompare","worldmap","details","builder"];
+const TAB_ORDER_STORAGE_KEY="kwDashboardTabOrderV6";
+const DEFAULT_TAB_ORDER=["performance","countryPoints","assistant","history","sales","einkauf","production","sawline","overview","trends","annual","statistics","quality","infrastructure","land","countryCompare","worldmap","details","builder"];
 let draggedTabButton=null;
 let suppressNextTabClick=false;
 let touchTabTimer=null;
@@ -6123,9 +6123,216 @@ function renderInfrastructure(){
   const scope=document.getElementById("infraScope");
   if(scope)scope.textContent=`${bundles.length} Wochenberichte · ${new Set(saw.map(r=>`${r.Jahr}|${r["KW Nr."]}`)).size} Sägelinien-Wochen`;
 }
+/* ===================== Performance-Seite =====================
+   Zusammenhänge statt Rohdaten: Produkt- und Länder-Performance über das
+   globale Zeitfenster, mit Momentum (Δ) gegenüber der gleich langen Vorperiode. */
+function previousWindowWeeks(weeks){
+  if(!weeks||!weeks.length)return [];
+  const all=availableDashboardWeeks();
+  const start=Number(weeks[0]);
+  return all.filter(w=>w<start).slice(-weeks.length);
+}
+function perfPctDelta(cur,prev){
+  if(cur===null||cur===undefined||prev===null||prev===undefined||!Number.isFinite(cur)||!Number.isFinite(prev)||prev===0)return null;
+  return (cur-prev)/Math.abs(prev)*100;
+}
+function perfDeltaHtml(delta,{pp=false}={}){
+  if(delta===null||delta===undefined||!Number.isFinite(delta))return `<span class="perf-delta flat">–</span>`;
+  const cls=delta>0.05?"up":(delta<-0.05?"down":"flat");
+  const arrow=delta>0.05?"▲":(delta<-0.05?"▼":"■");
+  const unit=pp?" pp":" %";
+  const num=pp?fmt2.format(delta):fmtNum.format(delta);
+  const txt=Math.abs(delta)<0.005?("±0"+unit):`${delta>0?"+":""}${num}${unit}`;
+  return `<span class="perf-delta ${cls}">${arrow} ${txt}</span>`;
+}
+function perfSetTable(id,html){const el=document.getElementById(id);if(el)el.innerHTML=html;}
+function perfWeeklyRevenue(weeks){
+  const set=new Set(weeks.map(Number));
+  return DATA.weekly.filter(r=>set.has(Number(r["KW Nr."]))).reduce((sum,r)=>{
+    const m=n(r["Umsatzmenge gesamt (m³)"]),p=n(r["Ø Preis gesamt (€/m³)"]);
+    return sum+((m!==null&&p!==null)?m*p:0);
+  },0);
+}
+function perfProductAgg(cats,weeks){
+  const set=new Set(weeks.map(Number));
+  return cats.map(cat=>{
+    const rs=DATA.salesBreakdown.filter(r=>r.Kategorie===cat&&set.has(Number(r["KW Nr."])));
+    let menge=0,revenue=0,priceSum=0,priceN=0,hasMenge=false;
+    rs.forEach(r=>{
+      const m=n(r["Menge (m³)"]),p=n(r["EUR (€/m³)"]);
+      if(m!==null){menge+=m;hasMenge=true;}
+      if(m!==null&&p!==null)revenue+=m*p;
+      if(p!==null){priceSum+=p;priceN++;}
+    });
+    const price=(menge>0&&revenue>0)?revenue/menge:(priceN?priceSum/priceN:null);
+    return {cat,menge:hasMenge?menge:null,revenue:revenue||null,price};
+  });
+}
+function perfCountryAgg(countries,weeks){
+  const set=new Set(weeks.map(Number));
+  return countries.map(land=>{
+    const rs=(DATA.countryComparison||[]).filter(r=>r.Land===land&&set.has(Number(r["KW Nr."])));
+    const avg=field=>{const v=rs.map(r=>n(r[field])).filter(x=>x!==null);return v.length?v.reduce((a,b)=>a+b,0)/v.length:null;};
+    return {land,share:avg("M%"),priceTotal:avg("Ø-Preis Gesamt"),priceHw:avg("Ø-Preis HW-Säge")};
+  });
+}
+/* Generisches Streudiagramm mit Median-Quadranten und Blasen. */
+function perfScatter(id,points,opt={}){
+  const host=document.getElementById(id);if(!host)return;host.innerHTML="";
+  const pts=points.filter(p=>Number.isFinite(p.x)&&Number.isFinite(p.y));
+  if(!pts.length){host.innerHTML='<div class="empty">Keine Daten für den gewählten Zeitraum.</div>';return;}
+  const W=560,H=380,m={l:62,r:20,t:20,b:52},pw=W-m.l-m.r,ph=H-m.t-m.b;
+  const xs=pts.map(p=>p.x),ys=pts.map(p=>p.y);
+  const pad=(lo,hi)=>{const d=(hi-lo)||Math.abs(hi)||1;return [lo-d*0.12,hi+d*0.14];};
+  const[x0,x1]=pad(Math.min(...xs),Math.max(...xs));
+  const[y0,y1]=pad(Math.min(0,...ys),Math.max(...ys));
+  const sx=v=>m.l+(v-x0)/(x1-x0||1)*pw;
+  const sy=v=>m.t+ph-(v-y0)/(y1-y0||1)*ph;
+  const med=arr=>{const s=[...arr].sort((a,b)=>a-b);const k=Math.floor(s.length/2);return s.length%2?s[k]:(s[k-1]+s[k])/2;};
+  const mx=med(xs),my=med(ys);
+  const maxR=Math.max(...pts.map(p=>Number.isFinite(p.size)?p.size:0),1);
+  const rPx=p=>7+Math.sqrt(Math.max(0,(Number.isFinite(p.size)?p.size:0))/maxR)*22;
+  const svg=svgEl("svg",{viewBox:`0 0 ${W} ${H}`,preserveAspectRatio:"xMidYMid meet"});
+  // Gitter + Achsenticks
+  for(let i=0;i<=4;i++){
+    const yy=m.t+i*ph/4,v=y1-i*(y1-y0)/4;
+    svg.append(svgEl("line",{x1:m.l,y1:yy,x2:W-m.r,y2:yy,stroke:"#e5ebf1"}));
+    svg.append(svgEl("text",{x:m.l-8,y:yy+4,"text-anchor":"end",fill:"#718096","font-size":10},opt.yTick?opt.yTick(v):fmtNum.format(v)));
+  }
+  for(let i=0;i<=4;i++){
+    const xx=m.l+i*pw/4,v=x0+i*(x1-x0)/4;
+    svg.append(svgEl("text",{x:xx,y:H-m.b+18,"text-anchor":"middle",fill:"#718096","font-size":10},opt.xTick?opt.xTick(v):fmtNum.format(v)));
+  }
+  // Median-Quadranten (gestrichelt)
+  svg.append(svgEl("line",{x1:sx(mx),y1:m.t,x2:sx(mx),y2:m.t+ph,stroke:"#b7c2ab","stroke-dasharray":"5 5"}));
+  svg.append(svgEl("line",{x1:m.l,y1:sy(my),x2:W-m.r,y2:sy(my),stroke:"#b7c2ab","stroke-dasharray":"5 5"}));
+  // Achsentitel
+  if(opt.xLabel)svg.append(svgEl("text",{x:m.l+pw/2,y:H-6,"text-anchor":"middle",fill:"#5f6f82","font-size":11,"font-weight":"700"},opt.xLabel));
+  if(opt.yLabel){const t=svgEl("text",{x:16,y:m.t+ph/2,"text-anchor":"middle",fill:"#5f6f82","font-size":11,"font-weight":"700",transform:`rotate(-90 16 ${m.t+ph/2})`},opt.yLabel);svg.append(t);}
+  // Blasen
+  pts.forEach((p,i)=>{
+    const cx=sx(p.x),cy=sy(p.y),r=rPx(p),color=p.color||colors[i%colors.length];
+    const c=svgEl("circle",{cx,cy,r,fill:color,"fill-opacity":"0.55",stroke:color,"stroke-width":"1.6"});
+    c.addEventListener("mousemove",e=>showTip(e,p.tooltip||esc(p.label)));c.addEventListener("mouseleave",hideTip);
+    svg.append(c);
+    if(p.label){
+      const lx=cx+r+4,anchor=lx>W-m.r-60?"end":"start",tx=lx>W-m.r-60?cx-r-4:lx;
+      svg.append(svgEl("text",{x:tx,y:cy+3,"text-anchor":anchor,fill:"#39402f","font-size":10,"font-weight":"700"},p.label));
+    }
+  });
+  host.append(svg);
+}
+function perfShortName(name){
+  return String(name).replace(/^davon\s+/i,"").replace("sonstige Weiterverarbeitung","sonst. WV").replace("Hauptware Säge","Hauptware").replace("NE Sägewerk","NE Säge");
+}
+function renderPerformance(){
+  if(!document.getElementById("perfKpis"))return;
+  const year=activeDashboardYear();
+  const weeks=dashboardWindowWeeks();
+  const prev=previousWindowWeeks(weeks);
+  const scope=windowScopeText(weeks);
+  const scopeChip=document.getElementById("perfScope");
+  if(scopeChip)scopeChip.textContent=`Performance ${year} · ${dashboardWindowLabel()}`;
+  const hasData=weeks.length&&(DATA.salesBreakdown.length||(DATA.countryComparison||[]).length||DATA.weekly.length);
+  if(!hasData){
+    document.getElementById("perfInsights").innerHTML="";
+    perfKpis.innerHTML='<div class="notice">Für den gewählten Zeitraum liegen keine Umsatz- bzw. Länderdaten vor. Bitte Wochenberichte laden.</div>';
+    perfScatter("perfProductScatter",[]);perfScatter("perfCountryScatter",[]);
+    renderTable("perfProductTable",[],[["Produkt","text"]]);renderTable("perfCountryTable",[],[["Land","text"]]);
+    return;
+  }
+  const prevTag=prev.length?`ggü. ${windowScopeText(prev)}`:"keine Vorperiode";
+
+  // ---------- KPIs ----------
+  const revenue=perfWeeklyRevenue(weeks),revenuePrev=prev.length?perfWeeklyRevenue(prev):null;
+  const menge=windowWeeklyField("Umsatzmenge gesamt (m³)",weeks,"m3");
+  const mengePrev=prev.length?windowWeeklyField("Umsatzmenge gesamt (m³)",prev,"m3"):null;
+  const price=(menge&&revenue)?revenue/menge:windowWeeklyField("Ø Preis gesamt (€/m³)",weeks,"price");
+  const pricePrev=prev.length?((mengePrev&&revenuePrev)?revenuePrev/mengePrev:windowWeeklyField("Ø Preis gesamt (€/m³)",prev,"price")):null;
+  const db=windowWeeklyField("DB Netto (€)",weeks,"currency");
+  const dbPrev=prev.length?windowWeeklyField("DB Netto (€)",prev,"currency"):null;
+  perfKpis.innerHTML=[
+    `<div class="detail-kpi"><div class="detail-kpi-label">Umsatz</div><div class="detail-kpi-value">${format(revenue,"currency")}</div><div class="detail-kpi-meta">${esc(scope)} · ${perfDeltaHtml(perfPctDelta(revenue,revenuePrev))} ${esc(prevTag)}</div></div>`,
+    `<div class="detail-kpi"><div class="detail-kpi-label">Verkaufsmenge</div><div class="detail-kpi-value">${format(menge,"m3")}</div><div class="detail-kpi-meta">${esc(scope)} · ${perfDeltaHtml(perfPctDelta(menge,mengePrev))} ${esc(prevTag)}</div></div>`,
+    `<div class="detail-kpi"><div class="detail-kpi-label">Ø Preis (gewichtet)</div><div class="detail-kpi-value">${format(price,"price")}</div><div class="detail-kpi-meta">${esc(scope)} · ${perfDeltaHtml(perfPctDelta(price,pricePrev))} ${esc(prevTag)}</div></div>`,
+    `<div class="detail-kpi"><div class="detail-kpi-label">DB Netto</div><div class="detail-kpi-value">${format(db,"currency")}</div><div class="detail-kpi-meta">${esc(scope)} · ${perfDeltaHtml(perfPctDelta(db,dbPrev))} ${esc(prevTag)}</div></div>`
+  ].join("");
+
+  // ---------- Produkt-Performance ----------
+  const topCats=REPORT_SALES_CATEGORIES.filter(c=>!/^davon\s/i.test(c));
+  const prodNow=perfProductAgg(topCats,weeks);
+  const prodPrevMap=new Map(perfProductAgg(topCats,prev).map(p=>[p.cat,p]));
+  const totalMenge=prodNow.reduce((s,p)=>s+(p.menge||0),0);
+  const prod=prodNow.filter(p=>p.menge!==null||p.price!==null).map((p,i)=>{
+    const prevP=prodPrevMap.get(p.cat)||{};
+    return {...p,share:totalMenge>0?(p.menge||0)/totalMenge*100:null,
+      dPrice:perfPctDelta(p.price,prevP.price),dMenge:perfPctDelta(p.menge,prevP.menge),
+      color:colors[i%colors.length]};
+  }).sort((a,b)=>(b.revenue||0)-(a.revenue||0));
+  const maxRev=Math.max(...prod.map(p=>p.revenue||0),1);
+  perfSetTable("perfProductTable",
+    `<thead><tr><th>Produkt</th><th class="num">Menge</th><th class="num">Ø Preis</th><th>Umsatz</th><th class="num">Anteil</th><th class="num">Δ Preis</th><th class="num">Δ Menge</th></tr></thead><tbody>`+
+    prod.map(p=>`<tr>
+      <td><span class="perf-dot" style="background:${p.color}"></span>${esc(p.cat)}</td>
+      <td class="num">${format(p.menge,"m3")}</td>
+      <td class="num">${format(p.price,"price")}</td>
+      <td class="perf-bar-cell"><div class="perf-minibar"><i style="width:${Math.max(3,(p.revenue||0)/maxRev*100)}%"></i><b>${format(p.revenue,"currency")}</b></div></td>
+      <td class="num">${p.share===null?"–":fmt2.format(p.share)+" %"}</td>
+      <td class="num">${perfDeltaHtml(p.dPrice)}</td>
+      <td class="num">${perfDeltaHtml(p.dMenge)}</td></tr>`).join("")+`</tbody>`);
+  perfScatter("perfProductScatter",prod.filter(p=>Number.isFinite(p.menge)&&Number.isFinite(p.price)).map(p=>({
+    x:p.menge,y:p.price,size:p.revenue||0,color:p.color,label:perfShortName(p.cat),
+    tooltip:`<b>${esc(p.cat)}</b><br>Menge ${format(p.menge,"m3")}<br>Ø Preis ${format(p.price,"price")}<br>Umsatz ${format(p.revenue,"currency")}<br>Anteil ${p.share===null?"–":fmt2.format(p.share)+" %"}`
+  })),{xLabel:"Menge (m³)",yLabel:"Ø Preis (€/m³)",xTick:v=>fmt0.format(v),yTick:v=>fmt0.format(v)});
+  const prodSub=document.getElementById("perfProductSub");
+  if(prodSub)prodSub.textContent=`${scope} · Blasengröße = Umsatz (Menge × Preis) · rechts oben = hoher Preis bei hoher Menge · Δ ${prevTag}`;
+
+  // ---------- Länder-Performance ----------
+  const landNow=perfCountryAgg(REPORT_COUNTRIES,weeks).filter(c=>c.land!=="NIR");
+  const landPrevMap=new Map(perfCountryAgg(REPORT_COUNTRIES,prev).map(c=>[c.land,c]));
+  const land=landNow.filter(c=>c.share!==null||c.priceTotal!==null).map((c,i)=>{
+    const prevC=landPrevMap.get(c.land)||{};
+    return {...c,dShare:c.share!==null&&prevC.share!=null?c.share-prevC.share:null,
+      dPrice:perfPctDelta(c.priceTotal,prevC.priceTotal),color:colors[i%colors.length]};
+  }).sort((a,b)=>(b.share||0)-(a.share||0));
+  const maxShare=Math.max(...land.map(c=>c.share||0),1);
+  perfSetTable("perfCountryTable",
+    `<thead><tr><th>Land</th><th>Anteil</th><th class="num">Ø Preis ges.</th><th class="num">Ø Preis HW</th><th class="num">Δ Anteil</th><th class="num">Δ Preis</th></tr></thead><tbody>`+
+    land.map(c=>`<tr>
+      <td><span class="perf-dot" style="background:${c.color}"></span>${esc(c.land)}</td>
+      <td class="perf-bar-cell"><div class="perf-minibar"><i style="width:${Math.max(3,(c.share||0)/maxShare*100)}%"></i><b>${c.share===null?"–":fmt2.format(c.share)+" %"}</b></div></td>
+      <td class="num">${format(c.priceTotal,"price")}</td>
+      <td class="num">${format(c.priceHw,"price")}</td>
+      <td class="num">${perfDeltaHtml(c.dShare,{pp:true})}</td>
+      <td class="num">${perfDeltaHtml(c.dPrice)}</td></tr>`).join("")+`</tbody>`);
+  perfScatter("perfCountryScatter",land.filter(c=>Number.isFinite(c.share)&&Number.isFinite(c.priceTotal)).map(c=>({
+    x:c.share,y:c.priceTotal,size:c.share||0,color:c.color,label:c.land.slice(0,3),
+    tooltip:`<b>${esc(c.land)}</b><br>Mengenanteil ${fmt2.format(c.share)} %<br>Ø Preis ges. ${format(c.priceTotal,"price")}<br>Ø Preis HW ${format(c.priceHw,"price")}`
+  })),{xLabel:"Mengenanteil (%)",yLabel:"Ø Preis Gesamt (€/m³)",xTick:v=>fmt0.format(v)+" %",yTick:v=>fmt0.format(v)});
+  const countrySub=document.getElementById("perfCountrySub");
+  if(countrySub)countrySub.textContent=`${scope} · Blasengröße = Mengenanteil · rechts oben = großer Markt zu hohem Preis · Δ ${prevTag}`;
+
+  // ---------- Auto-Insights ----------
+  const topRev=prod[0];
+  const topPrice=prod.filter(p=>p.price!==null).sort((a,b)=>b.price-a.price)[0];
+  const topMarket=land[0];
+  const premiumMarket=land.filter(c=>c.priceTotal!==null).sort((a,b)=>b.priceTotal-a.priceTotal)[0];
+  const revDelta=perfPctDelta(revenue,revenuePrev);
+  const insights=[];
+  if(topRev)insights.push({cls:"good",small:"Umsatzträger Produkt",strong:topRev.cat,sub:`${format(topRev.revenue,"currency")} · Anteil ${topRev.share===null?"–":fmt2.format(topRev.share)+" %"} · ${format(topRev.price,"price")}`});
+  if(topPrice)insights.push({cls:"",small:"Höchster Produktpreis",strong:topPrice.cat,sub:`${format(topPrice.price,"price")} · Menge ${format(topPrice.menge,"m3")}`});
+  if(topMarket)insights.push({cls:"good",small:"Größter Markt",strong:topMarket.land,sub:`Mengenanteil ${topMarket.share===null?"–":fmt2.format(topMarket.share)+" %"} · ${format(topMarket.priceTotal,"price")}`});
+  if(premiumMarket)insights.push({cls:"",small:"Preis-Premium Markt",strong:premiumMarket.land,sub:`${format(premiumMarket.priceTotal,"price")} · Anteil ${premiumMarket.share===null?"–":fmt2.format(premiumMarket.share)+" %"}`});
+  insights.push({cls:revDelta===null?"":(revDelta>=0?"good":"bad"),small:"Umsatz-Momentum",
+    strong:revDelta===null?"–":`${revDelta>0?"+":""}${fmtNum.format(revDelta)} %`,sub:`${format(revenue,"currency")} ${esc(prevTag)}`});
+  document.getElementById("perfInsights").innerHTML=insights.map(it=>
+    `<div class="perf-insight ${it.cls}"><small>${esc(it.small)}</small><strong title="${esc(it.strong)}">${esc(it.strong)}</strong><span>${it.sub}</span></div>`).join("");
+}
+
 function updateAll(){
   renderCountryPoints();
   if(typeof renderAssistantStatic==="function"&&document.getElementById("assistantExamples"))renderAssistantStatic();
+  renderPerformance();
   renderSales();renderEinkauf();renderProduction();renderSawline();renderKpis();renderOverviewCharts();renderTrends();renderAnnual();renderStatisticsBoard();renderQuality();
   renderLand();renderCountryComparison();renderWorldMap();renderDetails();renderHistory();renderInfrastructure();renderComparison();renderWallboard();
   renderKpiWorkspace();
