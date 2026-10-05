@@ -200,6 +200,17 @@ main{max-width:none;margin:0 auto;padding:22px 32px 50px}
 .wb-prow-top{background:linear-gradient(90deg,rgba(118,183,55,.28),rgba(118,183,55,.06));border-radius:12px;
   padding:clamp(4px,.5vh,8px) 12px;margin:0 -12px}
 .wb-prow-top .wb-pname,.wb-prow-top .wb-pprice{color:#3f6d18}
+/* Zweispaltige Performance-Zeile: Verkaufte Ware + Märkte (Länder) nebeneinander */
+.wb-perf{display:grid;grid-template-columns:1fr 1fr;gap:clamp(12px,1.2vw,22px);flex:1;min-height:0}
+.wb-perf .wb-products{min-height:0}
+.wb-perf .wb-prow{grid-template-columns:minmax(92px,1.2fr) 2fr minmax(82px,auto);gap:clamp(8px,1vw,16px)}
+.wb-perf .wb-pname,.wb-perf .wb-pprice{font-size:clamp(14px,1.05vw,19px)}
+.wb-perf .wb-pbar span{font-size:clamp(12px,.95vw,17px)}
+.wb-markets .wb-pbar{background:linear-gradient(90deg,#3f7f8b,#63a9b6)}
+.wb-markets .wb-prow-top{background:linear-gradient(90deg,rgba(63,127,139,.26),rgba(63,127,139,.05))}
+.wb-markets .wb-prow-top .wb-pname,.wb-markets .wb-prow-top .wb-pprice{color:#2a5e68}
+.wb-markets .wb-topbadge{background:#3f7f8b;color:#eafaff}
+@media(max-width:1000px){.wb-perf{grid-template-columns:1fr}}
 .wb-empty{flex:1;display:grid;place-items:center;text-align:center;color:#6f6647;font-size:clamp(18px,2vw,30px);padding:40px}
 .wb-strip{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
 .wb-chip{flex:none;padding:7px 13px;border-radius:999px;border:1px solid rgba(74,66,38,.20);background:rgba(255,255,255,.42);
@@ -2669,6 +2680,7 @@ body.monitor-mode .nav button[data-action="monitor"]{
 <script src="dashboard-country.js"></script>
 <script src="dashboard-sawline.js"></script>
 <script src="dashboard-einkauf.js"></script>
+<script src="dashboard-weekly-seed.js"></script>
 <script src="dashboard-data.js"></script>
 <script src="dashboard.js"></script>
 </body>

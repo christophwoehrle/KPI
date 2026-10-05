@@ -751,6 +751,14 @@ function mergeImportedBundle(bundle,{persist=false}={}){
   recordImportedBundle(bundle);
   if(persist)persistImportedBundle(bundle);
 }
+/* Nimmt die vorbefüllten Startberichte in die Mehrjahres-Speicher auf (ohne zu projizieren).
+   Wird vor applyStoredImports aufgerufen, damit eigene Uploads derselben KW Vorrang haben. */
+function applySeedBundles(){
+  (DATA.seedBundles||[]).forEach(bundle=>{
+    try{recordImportedBundle(bundle);}
+    catch(error){console.warn("Startbericht konnte nicht geladen werden",bundle&&bundle.fileName,error);}
+  });
+}
 function applyStoredImports(){
   try{
     const stored=JSON.parse(storageGet(IMPORT_STORAGE_KEY)||"{}");
@@ -2795,6 +2803,21 @@ function renderWallboard(){
   const ytdDelta=ytdHasData?ytdUmsatz-ytdEinkauf:null;
   const ytdStr=ytdDelta==null?"–":(ytdDelta>=0?"+ ":"− ")+format(Math.abs(ytdDelta),"currency");
   const ytdCls=ytdDelta==null?"":(ytdDelta>=0?"wb-pos":"wb-neg");
+  // Märkte (Länder-Performance): Top-Absatzmärkte nach Mengenanteil mit erzieltem Ø-Preis
+  const markets=countryComparisonRows(week)
+    .filter(row=>row.Land!=="NIR"&&(n(row["M%"])||0)>0)
+    .slice(0,8);
+  const maxMShare=Math.max(1,...markets.map(row=>n(row["M%"])||0));
+  const marketsRows=markets.map((row,i)=>{
+    const sh=n(row["M%"])||0,pr=n(row["Ø-Preis Gesamt"]);
+    const width=Math.max(7,Math.round(sh/maxMShare*100));
+    const top=i===0;
+    return `<div class="wb-prow${top?" wb-prow-top":""}">
+      <div class="wb-pname" title="${esc(row.Land)}">${top?'<span class="wb-topbadge">★ Top-Markt</span>':""}${esc(row.Land)}</div>
+      <div class="wb-pbar-wrap"><div class="wb-pbar" style="width:0" data-w="${width}"><span>${format(sh,"pctpoint")}</span></div></div>
+      <div class="wb-pprice">${pr==null?"–":format(pr,"price")}</div>
+    </div>`;
+  }).join("");
   body.innerHTML=`
    <div class="wb-grid">
      <section class="wb-card wb-prod">
@@ -2847,27 +2870,35 @@ function renderWallboard(){
      </div>
      <div class="wb-trend-chart" id="wbTrendChart"></div>
    </section>
-   <section class="wb-products">
-     <div class="wb-products-head">
-       <div class="wb-card-label">Verkaufte Ware · ${sortLabel}</div>
-       <div class="design-switch design-switch-dark wb-sort-switch" role="group" aria-label="Top Seller sortieren nach">
-         <button type="button" class="ds-opt${byRevenue?"":" active"}" data-wbsort="price">Preis</button>
-         <button type="button" class="ds-opt${byRevenue?" active":""}" data-wbsort="revenue">Umsatz</button>
+   <div class="wb-perf">
+     <section class="wb-products">
+       <div class="wb-products-head">
+         <div class="wb-card-label">Verkaufte Ware · ${sortLabel}</div>
+         <div class="design-switch design-switch-dark wb-sort-switch" role="group" aria-label="Top Seller sortieren nach">
+           <button type="button" class="ds-opt${byRevenue?"":" active"}" data-wbsort="price">Preis</button>
+           <button type="button" class="ds-opt${byRevenue?" active":""}" data-wbsort="revenue">Umsatz</button>
+         </div>
        </div>
-     </div>
-     ${sales.length?`<div class="wb-prod-list">${sales.map((row,i)=>{
-        const m=n(row["Menge (m³)"])||0,pr=n(row["EUR (€/m³)"]),rev=revenueOf(row);
-        const metricVal=byRevenue?rev:m,metricMax=byRevenue?maxRevenue:maxMenge;
-        const width=Math.max(7,Math.round(metricVal/metricMax*100));
-        const barLabel=byRevenue?format(rev,"currency"):format(m,"m3");
-        const top=i===0;
-        return `<div class="wb-prow${top?" wb-prow-top":""}">
-          <div class="wb-pname" title="${esc(row.Kategorie)}">${top?'<span class="wb-topbadge">★ Top Seller</span>':""}${esc(row.Kategorie)}</div>
-          <div class="wb-pbar-wrap"><div class="wb-pbar" style="width:0" data-w="${width}"><span>${barLabel}</span></div></div>
-          <div class="wb-pprice">${pr==null?"–":format(pr,"price")}</div>
-        </div>`;
-     }).join("")}</div>`:`<div class="wb-empty">Für KW ${week} liegen keine Produktdaten vor.</div>`}
-   </section>`;
+       ${sales.length?`<div class="wb-prod-list">${sales.map((row,i)=>{
+          const m=n(row["Menge (m³)"])||0,pr=n(row["EUR (€/m³)"]),rev=revenueOf(row);
+          const metricVal=byRevenue?rev:m,metricMax=byRevenue?maxRevenue:maxMenge;
+          const width=Math.max(7,Math.round(metricVal/metricMax*100));
+          const barLabel=byRevenue?format(rev,"currency"):format(m,"m3");
+          const top=i===0;
+          return `<div class="wb-prow${top?" wb-prow-top":""}">
+            <div class="wb-pname" title="${esc(row.Kategorie)}">${top?'<span class="wb-topbadge">★ Top Seller</span>':""}${esc(row.Kategorie)}</div>
+            <div class="wb-pbar-wrap"><div class="wb-pbar" style="width:0" data-w="${width}"><span>${barLabel}</span></div></div>
+            <div class="wb-pprice">${pr==null?"–":format(pr,"price")}</div>
+          </div>`;
+       }).join("")}</div>`:`<div class="wb-empty">Für KW ${week} liegen keine Produktdaten vor.</div>`}
+     </section>
+     <section class="wb-products wb-markets">
+       <div class="wb-products-head">
+         <div class="wb-card-label">Märkte · Mengenanteil &amp; erzielter Ø-Preis</div>
+       </div>
+       ${markets.length?`<div class="wb-prod-list">${marketsRows}</div>`:`<div class="wb-empty">Für KW ${week} liegen keine Länderdaten vor.</div>`}
+     </section>
+   </div>`;
   // Dynamik: Zähl-Animation der großen Zahlen, wachsende Balken, KW-Puls
   const heroEls=body.querySelectorAll(".wb-hero-val");
   const specs=[[gesamtFm,v=>fmt0.format(v)],[auftrag,v=>fmtNum.format(v)],[menge,v=>fmtNum.format(v)],[preis,v=>fmt0.format(v)]];
@@ -6343,7 +6374,7 @@ function updateAll(){
     hint.hidden=!!hasData;
   }
 }
-loadClosedStandardWindows();historyInitStores();applyStoredPurchasing();applyStoredImports();initControls();updateAll();
+loadClosedStandardWindows();historyInitStores();applyStoredPurchasing();applySeedBundles();applyStoredImports();initControls();updateAll();
 window.addEventListener("resize",()=>{clearTimeout(window.__rt);window.__rt=setTimeout(updateAll,120)});
 
 

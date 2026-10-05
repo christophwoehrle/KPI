@@ -12,3 +12,7 @@ DATA.sawlineReports = (typeof SAWLINE_REPORTS !== "undefined") ? SAWLINE_REPORTS
    purchasingHistory = alle Jahre; purchasing = Arbeits-Array des im Header gewählten Jahres. */
 DATA.purchasingHistory = (typeof PURCHASING_HISTORY !== "undefined") ? PURCHASING_HISTORY : [];
 DATA.purchasing = [];
+
+/* Vorbefüllte Wochenberichte (Startdatensatz). Werden beim Start in die
+   Mehrjahres-Speicher aufgenommen; eigene Uploads derselben KW überschreiben sie. */
+DATA.seedBundles = (typeof WEEKLY_BUNDLES !== "undefined") ? WEEKLY_BUNDLES : [];
