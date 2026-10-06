@@ -4717,7 +4717,26 @@ function kpiCatalog(){
     series:()=>purchasingSalesSeries().map(point=>({week:point.week,value:point.ratio})).filter(point=>point.value!==null)
   });
 
+  // Jahresvergleich: Auftragseingang 2025 ↔ 2026 (KW1–KW40) in einem Fenster
+  add({
+    id:"yearcompare::auftragseingang",
+    label:"Auftragseingang 2025 ↔ 2026 · KW1–40",
+    group:"Jahresvergleich",mode:"year-compare",type:"m3",
+    series:()=>{const b=auftragByYearWeek(2026);return YEAR_COMPARE_WEEKS.map(w=>({week:w,value:b.has(w)?b.get(w):null}));}
+  });
+
   return entries;
+}
+/* Auftragseingang (m³) je KW für ein Jahr aus dem Mehrjahres-Speicher. */
+const YEAR_COMPARE_WEEKS=Array.from({length:40},(_,i)=>i+1);   // KW1 … KW40
+function auftragByYearWeek(year){
+  const src=(DATA.weeklyHistory&&DATA.weeklyHistory.length)?DATA.weeklyHistory:(DATA.weekly||[]);
+  const map=new Map();
+  src.filter(row=>weeklyYearOf(row)===Number(year)).forEach(row=>{
+    const w=Number(row["KW Nr."]),v=n(row["Auftragseingang gesamt (m³)"]);
+    if(Number.isFinite(w))map.set(w,Number.isFinite(v)?v:null);
+  });
+  return map;
 }
 function availableMetrics(){
   return kpiCatalog().map(entry=>entry.id);
@@ -4752,7 +4771,24 @@ function defaultKpiLayout(){
     ["Auftragsbestand 4W (m³)",375,280,330,235],
     ["Verladungen gesamt",730,280,330,235]
   ];
-  return defs.map((d,i)=>({id:"kpi-"+Date.now()+"-"+i,metric:d[0],week:latest,x:d[1],y:d[2],w:d[3],h:d[4],z:i+1}));
+  const items=defs.map((d,i)=>({id:"kpi-"+Date.now()+"-"+i,metric:d[0],week:latest,x:d[1],y:d[2],w:d[3],h:d[4],z:i+1}));
+  // Jahresvergleich-Fenster (Auftragseingang 2025 ↔ 2026) breit darunter platzieren
+  items.push({id:"kpi-"+Date.now()+"-yc",metric:"yearcompare::auftragseingang",week:latest,x:20,y:540,w:720,h:320,z:items.length+1});
+  return items;
+}
+/* Einmalige Aufnahme des Jahresvergleich-Fensters in bereits gespeicherte Boards. */
+const YEAR_COMPARE_INSERT_KEY="kwDashboardYearCompareInsertedV1";
+function ensureYearCompareWindow(){
+  if(storageGet(YEAR_COMPARE_INSERT_KEY))return;
+  const exists=customKpis.some(item=>item.metric==="yearcompare::auftragseingang");
+  if(!exists){
+    const maxBottom=Math.max(0,...customKpis.map(item=>(item.y||0)+(item.h||0)));
+    customKpis.push({id:"kpi-"+Date.now()+"-yc",metric:"yearcompare::auftragseingang",
+      week:Math.max(0,...(DATA.weekly||[]).map(r=>Number(r["KW Nr."]))),
+      x:20,y:(customKpis.length?maxBottom+20:20),w:720,h:320,z:(topZ=(topZ||10)+1)});
+    saveKpiLayout();
+  }
+  storageSet(YEAR_COMPARE_INSERT_KEY,"1");
 }
 function loadKpiLayout(){
   try{
@@ -4807,6 +4843,7 @@ function initKpiBuilder(weeks){
   builderMetric.addEventListener("change",()=>refreshBuilderWeekOptions());
   refreshBuilderWeekOptions(Math.max(...availableAllKpiWeeks()));
   loadKpiLayout();
+  ensureYearCompareWindow();
 
   addKpiBtn.addEventListener("click",()=>{
     const def=resolveKpiDefinition(builderMetric.value);
@@ -4918,6 +4955,48 @@ function customQualityCardContent(def){
     </div>
     <div class="custom-quality-text">${esc(row["Wichtigster Hinweis"]||row.Prüfergebnis||"Keine Zusatzinformation.")}</div>`;
 }
+/* Zwei-Jahres-Liniendiagramm (KW auf X, zwei Serien) als Inline-SVG-String. */
+function yearCompareSvg(weeks,a,b,colorA,colorB){
+  const va=weeks.map(w=>a.get(w)),vb=weeks.map(w=>b.get(w));
+  const valid=[...va,...vb].filter(v=>Number.isFinite(v));
+  if(!valid.length)return '<div class="metric-missing">Noch keine Auftragseingangsdaten vorhanden.</div>';
+  const W=680,H=250,m={l:48,r:14,t:12,b:28},pw=W-m.l-m.r,ph=H-m.t-m.b;
+  const max=Math.max(...valid,1),min=Math.min(0,...valid);
+  const sx=i=>m.l+(weeks.length>1?i/(weeks.length-1):0.5)*pw;
+  const sy=v=>m.t+ph-((v-min)/((max-min)||1))*ph;
+  const path=vals=>{let d="",pen=false;vals.forEach((v,i)=>{if(!Number.isFinite(v)){pen=false;return;}d+=(pen?"L":"M")+sx(i).toFixed(1)+" "+sy(v).toFixed(1)+" ";pen=true;});return d.trim();};
+  const dots=(vals,color)=>vals.map((v,i)=>Number.isFinite(v)?`<circle cx="${sx(i).toFixed(1)}" cy="${sy(v).toFixed(1)}" r="2.3" fill="${color}"/>`:"").join("");
+  let grid="";
+  for(let k=0;k<=4;k++){const yy=m.t+k*ph/4,val=max-(k*(max-min)/4);grid+=`<line x1="${m.l}" y1="${yy.toFixed(1)}" x2="${W-m.r}" y2="${yy.toFixed(1)}" stroke="#e5ebf1"/><text x="${m.l-6}" y="${(yy+4).toFixed(1)}" text-anchor="end" fill="#8a9382" font-size="10">${fmt0.format(val)}</text>`;}
+  let xlab="";weeks.forEach((w,i)=>{if(w%5===0||i===0)xlab+=`<text x="${sx(i).toFixed(1)}" y="${H-8}" text-anchor="middle" fill="#8a9382" font-size="10">KW${w}</text>`;});
+  const da=path(va),db=path(vb);
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" width="100%" height="100%" style="display:block">
+    ${grid}${xlab}
+    ${da?`<path d="${da}" fill="none" stroke="${colorA}" stroke-width="2.3" stroke-linejoin="round" stroke-linecap="round"/>${dots(va,colorA)}`:""}
+    ${db?`<path d="${db}" fill="none" stroke="${colorB}" stroke-width="2.9" stroke-linejoin="round" stroke-linecap="round"/>${dots(vb,colorB)}`:""}
+  </svg>`;
+}
+function customYearCompareContent(def,item){
+  const weeks=YEAR_COMPARE_WEEKS;
+  const colorA="#a27a4f",colorB="#76b737";
+  const a=auftragByYearWeek(2025),b=auftragByYearWeek(2026);
+  const sum=map=>{let s=null;weeks.forEach(w=>{const v=map.get(w);if(Number.isFinite(v))s=(s||0)+v;});return s;};
+  const s25=sum(a),s26=sum(b);
+  const has25=weeks.some(w=>Number.isFinite(a.get(w))),has26=weeks.some(w=>Number.isFinite(b.get(w)));
+  const delta=(Number.isFinite(s25)&&Number.isFinite(s26)&&s25!==0)?(s26-s25)/Math.abs(s25)*100:null;
+  return `<div class="yc-legend">
+      <span class="yc-k"><i style="background:${colorA}"></i>2025</span>
+      <span class="yc-k"><i style="background:${colorB}"></i>2026</span>
+      <span class="yc-span">Auftragseingang · KW1–KW40 · m³</span>
+    </div>
+    <div class="window-stats yc-stats">
+      <div class="window-stat"><small>Σ 2025</small><strong>${has25?format(s25,"m3"):"–"}</strong></div>
+      <div class="window-stat"><small>Σ 2026</small><strong>${has26?format(s26,"m3"):"–"}</strong></div>
+      <div class="window-stat"><small>Δ 2026/2025</small><strong class="${delta==null?"":(delta>=0?"delta up":"delta down")}">${delta==null?"–":(delta>0?"+":"")+fmtNum.format(delta)+" %"}</strong></div>
+    </div>
+    <div class="yc-chart">${yearCompareSvg(weeks,a,b,colorA,colorB)}</div>
+    ${!has25?'<div class="yc-note">2025 erscheint, sobald Wochenberichte KW-XX-2025.xlsx geladen sind.</div>':""}`;
+}
 function customKpiContent(item){
   const def=resolveKpiDefinition(item.metric);
   if(!def)return `<div class="metric-missing">Dieses gespeicherte KPI-Fenster ist in den aktuellen Daten nicht mehr vorhanden.</div>`;
@@ -4925,6 +5004,7 @@ function customKpiContent(item){
   if(def.mode==="production-card")return customProductionCardContent(def,item);
   if(def.mode==="sawline-card")return customSawlineCardContent(def,item);
   if(def.mode==="quality-card")return customQualityCardContent(def);
+  if(def.mode==="year-compare")return customYearCompareContent(def,item);
   return customNumericContent(def,item);
 }
 function renderKpiWorkspace(){
@@ -4947,7 +5027,7 @@ function renderKpiWorkspace(){
     </header>
     <div class="window-controls">
       <select data-role="metric" aria-label="KPI oder Anzeigefenster auswählen">${metricOptionMarkup(item.metric)}</select>
-      <select data-role="week" aria-label="Kalenderwoche auswählen">${weekOptions.map(w=>`<option value="${w}" ${Number(item.week)===w?"selected":""}>KW${String(w).padStart(2,"0")}</option>`).join("")}</select>
+      ${def&&def.mode==="year-compare"?"":`<select data-role="week" aria-label="Kalenderwoche auswählen">${weekOptions.map(w=>`<option value="${w}" ${Number(item.week)===w?"selected":""}>KW${String(w).padStart(2,"0")}</option>`).join("")}</select>`}
     </div>
     <div class="window-body">${customKpiContent(item)}</div>
     <div class="resize-handle" data-resize-handle title="Fenstergröße ändern"></div>
@@ -4975,7 +5055,7 @@ function bindKpiWindow(el){
     item.week=resolveKpiWeek(resolveKpiDefinition(item.metric),item.week);
     saveKpiLayout();renderKpiWorkspace()
   });
-  el.querySelector('[data-role="week"]').addEventListener("change",e=>{
+  el.querySelector('[data-role="week"]')?.addEventListener("change",e=>{
     item.week=Number(e.target.value);saveKpiLayout();renderKpiWorkspace()
   });
   const head=el.querySelector("[data-drag-handle]");
